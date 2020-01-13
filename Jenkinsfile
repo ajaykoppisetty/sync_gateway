@@ -370,6 +370,14 @@ pipeline {
 
     post {
         always {
+            script {
+                if (${env.BRANCH_NAME} == 'pipelinetest') {
+                    mail to: 'ben.brooks@couchbase.com',
+                        subject: "test: ${currentBuild.fullDisplayName}",
+                        body: "test: ${env.BUILD_URL}"
+                }
+            }
+
             // Publish the cobertura formatted test coverage reports into Jenkins
             cobertura autoUpdateHealth: false, onlyStable: false, autoUpdateStability: false, coberturaReportFile: 'reports/coverage-*.xml', conditionalCoverageTargets: '70, 0, 0', failNoReports: false, failUnhealthy: false, failUnstable: false, lineCoverageTargets: '80, 0, 0', maxNumberOfBuilds: 0, methodCoverageTargets: '80, 0, 0', sourceEncoding: 'ASCII', zoomCoverageChart: false
 
