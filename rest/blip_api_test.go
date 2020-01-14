@@ -1965,8 +1965,8 @@ func TestBlipDeltaSyncPull(t *testing.T) {
 
 	sgUseDeltas := base.IsEnterpriseEdition()
 	rtConfig := RestTesterConfig{DatabaseConfig: &DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: &sgUseDeltas}}}
-	b, teardownFn := testBucketPool.GetTestBucket(t)
-	defer teardownFn()
+	b := base.GetTestBucket(t)
+	defer b.Close()
 	rt := NewRestTesterWithBucket(t, &rtConfig, b)
 	defer rt.Close()
 
@@ -2027,8 +2027,8 @@ func TestBlipDeltaSyncPullRemoved(t *testing.T) {
 
 	sgUseDeltas := base.IsEnterpriseEdition()
 	rtConfig := RestTesterConfig{noAdminParty: true, DatabaseConfig: &DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: &sgUseDeltas}}}
-	b, teardownFn := testBucketPool.GetTestBucket(t)
-	defer teardownFn()
+	b := base.GetTestBucket(t)
+	defer b.Close()
 	rt := NewRestTesterWithBucket(t, &rtConfig, b)
 	defer rt.Close()
 
@@ -2083,8 +2083,8 @@ func TestBlipDeltaSyncPullTombstoned(t *testing.T) {
 
 	sgUseDeltas := base.IsEnterpriseEdition()
 	rtConfig := RestTesterConfig{noAdminParty: true, DatabaseConfig: &DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: &sgUseDeltas}}}
-	b, teardownFn := testBucketPool.GetTestBucket(t)
-	defer teardownFn()
+	b := base.GetTestBucket(t)
+	defer b.Close()
 	rt := NewRestTesterWithBucket(t, &rtConfig, b)
 	defer rt.Close()
 
@@ -2165,8 +2165,8 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 
 	sgUseDeltas := base.IsEnterpriseEdition()
 	rtConfig := RestTesterConfig{noAdminParty: true, DatabaseConfig: &DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: &sgUseDeltas}}}
-	b, teardownFn := testBucketPool.GetTestBucket(t)
-	defer teardownFn()
+	b := base.GetTestBucket(t)
+	defer b.Close()
 	rt := NewRestTesterWithBucket(t, &rtConfig, b)
 	defer rt.Close()
 
@@ -2318,8 +2318,8 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 
 	sgUseDeltas := base.IsEnterpriseEdition()
 	rtConfig := RestTesterConfig{DatabaseConfig: &DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: &sgUseDeltas}}}
-	b, teardownFn := testBucketPool.GetTestBucket(t)
-	defer teardownFn()
+	b := base.GetTestBucket(t)
+	defer b.Close()
 	rt := NewRestTesterWithBucket(t, &rtConfig, b)
 	defer rt.Close()
 

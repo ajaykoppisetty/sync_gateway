@@ -18,7 +18,7 @@ func TestInitializeIndexes(t *testing.T) {
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	defer db.Close()
 
 	goCbBucket, isGoCBBucket := base.AsGoCBBucket(testBucket)
 	goassert.True(t, isGoCBBucket)
@@ -74,7 +74,7 @@ func TestPostUpgradeIndexesSimple(t *testing.T) {
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	defer db.Close()
 
 	gocbBucket, ok := base.AsGoCBBucket(testBucket.Bucket)
 	assert.True(t, ok)
@@ -119,7 +119,7 @@ func TestPostUpgradeIndexesVersionChange(t *testing.T) {
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	defer db.Close()
 
 	gocbBucket, ok := base.AsGoCBBucket(testBucket.Bucket)
 	assert.True(t, ok)
@@ -155,7 +155,7 @@ func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	defer db.Close()
 
 	gocbBucket, ok := base.AsGoCBBucket(testBucket.Bucket)
 	assert.True(t, ok)
@@ -198,7 +198,7 @@ func TestRemoveObsoleteIndexOnFail(t *testing.T) {
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	defer db.Close()
 
 	leakyBucket := base.NewLeakyBucket(testBucket.Bucket, base.LeakyBucketConfig{DropIndexErrorNames: []string{"sg_access_1", "sg_access_x1"}})
 	b, ok := leakyBucket.(*base.LeakyBucket)

@@ -168,7 +168,7 @@ func TestRevisionCacheInternalProperties(t *testing.T) {
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	defer db.Close()
 
 	// Invalid _revisions property will be stripped.  Should also not be present in the rev cache.
 	rev1body := Body{
@@ -217,7 +217,7 @@ func TestBypassRevisionCache(t *testing.T) {
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	defer db.Close()
 
 	docBody := Body{
 		"value": 1234,
@@ -279,7 +279,7 @@ func TestPutRevisionCacheAttachmentProperty(t *testing.T) {
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	defer db.Close()
 
 	rev1body := Body{
 		"value":         1234,
@@ -321,7 +321,7 @@ func TestPutExistingRevRevisionCacheAttachmentProperty(t *testing.T) {
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	defer db.Close()
 
 	docKey := "doc1"
 	rev1body := Body{

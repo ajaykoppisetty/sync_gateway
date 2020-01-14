@@ -82,9 +82,28 @@ func testCluster(server string) *gocb.Cluster {
 	return cluster
 }
 
+type BucketReadierFunc func(ctx context.Context, b *CouchbaseBucketGoCB, tbp *GocbTestBucketPool) error
+
+// EmptyBucketReadier ensures the bucket is empty.
+var EmptyBucketReadier BucketReadierFunc = func(ctx context.Context, b *CouchbaseBucketGoCB, tbp *GocbTestBucketPool) error {
+	// Empty bucket
+	if itemCount, err := b.QueryBucketItemCount(); err != nil {
+		return err
+	} else if itemCount == 0 {
+		tbp.Logf(ctx, "Bucket already empty - skipping flush")
+	} else {
+		tbp.Logf(ctx, "Bucket not empty (%d items), flushing bucket", itemCount)
+		err := b.Flush()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // NewTestBucketPool initializes a new GocbTestBucketPool. To be called from TestMain for packages requiring test buckets.
 // Set useGSI to false to skip index creation for packages that don't require GSI, to speed up bucket readiness.
-func NewTestBucketPool(useGSI bool) *GocbTestBucketPool {
+func NewTestBucketPool(bucketReadierFunc BucketReadierFunc) *GocbTestBucketPool {
 	// We can safely skip setup when we want Walrus buckets to be used.
 	if !TestUseCouchbaseServer() {
 		return nil
@@ -119,10 +138,9 @@ func NewTestBucketPool(useGSI bool) *GocbTestBucketPool {
 		},
 		preserveBuckets: preserveBuckets,
 		verbose:         verbose,
-		useGSI:          useGSI,
 	}
 
-	go tbp.bucketReadier(ctx)
+	go tbp.bucketReadierWorker(ctx, bucketReadierFunc)
 
 	if err := tbp.createTestBuckets(numBuckets); err != nil {
 		log.Fatalf("Couldn't create test buckets: %v", err)
@@ -187,6 +205,8 @@ func (tbp *GocbTestBucketPool) GetTestBucket(t testing.TB) (b Bucket, teardownFn
 			return
 		}
 
+		// tbp.Logf(ctx, "Teardown called - closing bucket")
+		// gocbBucket.Close()
 		tbp.Logf(ctx, "Teardown called - Pushing into bucketReadier queue")
 		tbp.bucketReadierQueue <- gocbBucket
 	}
@@ -342,12 +362,10 @@ func (tbp *GocbTestBucketPool) createTestBuckets(numBuckets int) error {
 	return nil
 }
 
-// bucketReadier takes a channel of "dirty" buckets, and gets them ready for being put back into the pool.
-// - flushes if required
-// - initializes views
-// - initializes indexes
-// - pushes them back into the ready bucket pool.
-func (tbp *GocbTestBucketPool) bucketReadier(ctx context.Context) {
+// bucketReadierWorker reads a channel of "dirty" buckets (bucketReadierQueue), does something to get them ready, and then puts them back into the pool.
+// The mechanism for getting the bucket ready can vary by package being tested (for instance, a package not requiring views or GSI can use the EmptyBucketReadier function)
+// A package requiring views or GSI, will need to pass in the db.ViewsAndGSIBucketReadier function.
+func (tbp *GocbTestBucketPool) bucketReadierWorker(ctx context.Context, bucketReadierFunc BucketReadierFunc) {
 	tbp.Logf(context.Background(), "Starting bucketReadier")
 
 loop:
@@ -361,52 +379,13 @@ loop:
 			ctx := bucketCtx(ctx, b)
 			tbp.Logf(ctx, "bucketReadier got bucket")
 
-			go func(b Bucket) {
-				gocbBucket, ok := AsGoCBBucket(b)
-				if !ok {
-					panic(fmt.Sprintf("not a gocb bucket: %T", b))
-				}
-
-				// Empty bucket
-				if itemCount, err := gocbBucket.QueryBucketItemCount(); err != nil {
+			go func(b *CouchbaseBucketGoCB) {
+				err := bucketReadierFunc(ctx, b, tbp)
+				if err != nil {
 					panic(err)
-				} else if itemCount == 0 {
-					tbp.Logf(ctx, "Bucket already empty - skipping flush")
-				} else {
-					tbp.Logf(ctx, "Bucket not empty (%d items), flushing bucket", itemCount)
-					err := gocbBucket.Flush()
-					if err != nil {
-						panic(err)
-					}
 				}
-
-				// Initialize Views
-				// FIXME: Import cycle (base -> db -> base)
-				// if err := db.InitializeViews(gocbBucket); err != nil {
-				// 	panic(err)
-				// }
-
-				// Initialize Indexes
-				// FIXME: Import cycle (base -> db -> base)
-				// if tbp.useGSI {
-				// 	// init GSI indexes
-				// 	err := db.InitializeIndexes(gocbBucket, TestUseXattrs(), 0)
-				// 	if err != nil {
-				// 		panic(err)
-				// 	}
-				//
-				// 	// Since GetTestBucket() always returns an _empty_ bucket, it's safe to wait for the indexes to be empty
-				// 	err = db.WaitForIndexEmpty(gocbBucket, TestUseXattrs())
-				// 	if err != nil {
-				// 		tbp.Logf(ctx, "Bucket %q error WaitForIndexEmpty: %v.  Drop indexes and retry", b.GetName(), err)
-				// 		if err := DropAllBucketIndexes(gocbBucket); err != nil {
-				// 			panic(err)
-				// 		}
-				// 	}
-				// }
-
 				tbp.Logf(ctx, "Bucket ready, putting back into ready pool")
-				tbp.readyBucketPool <- gocbBucket
+				tbp.readyBucketPool <- b
 			}(b)
 		}
 	}

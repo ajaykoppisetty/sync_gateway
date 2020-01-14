@@ -21,7 +21,7 @@ func TestQueryChannelsStatsView(t *testing.T) {
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	defer db.Close()
 
 	// docID -> Sequence
 	docSeqMap := make(map[string]uint64, 3)
@@ -73,7 +73,7 @@ func TestQueryChannelsStatsN1ql(t *testing.T) {
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	defer db.Close()
 
 	// docID -> Sequence
 	docSeqMap := make(map[string]uint64, 3)
@@ -121,7 +121,7 @@ func TestQuerySequencesStatsView(t *testing.T) {
 
 	db, testBucket := setupTestDBWithViewsEnabled(t)
 	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	defer db.Close()
 
 	// docID -> Sequence
 	docSeqMap := make(map[string]uint64, 20)
@@ -218,7 +218,7 @@ func TestQuerySequencesStatsN1ql(t *testing.T) {
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	defer db.Close()
 
 	// docID -> Sequence
 	docSeqMap := make(map[string]uint64, 20)
@@ -315,7 +315,7 @@ func TestCoveringQueries(t *testing.T) {
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	defer db.Close()
 
 	gocbBucket, ok := base.AsGoCBBucket(testBucket)
 	if !ok {
@@ -362,7 +362,7 @@ func TestAllDocsQuery(t *testing.T) {
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	defer db.Close()
 
 	// Add docs with channel assignment
 	for i := 1; i <= 10; i++ {
@@ -425,7 +425,7 @@ func TestAccessQuery(t *testing.T) {
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	defer db.Close()
 
 	db.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {
 	access(doc.accessUser, doc.accessChannel)
@@ -476,7 +476,7 @@ func TestRoleAccessQuery(t *testing.T) {
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	defer db.Close()
 
 	db.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {
 	role(doc.accessUser, "role:" + doc.accessChannel)

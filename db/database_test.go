@@ -37,9 +37,9 @@ func init() {
 	underscore.Disable() // It really slows down unit tests (by making otto.New take a lot longer)
 }
 
-func testLeakyBucket(config base.LeakyBucketConfig, tester testing.TB) base.Bucket {
+func testLeakyBucket(config base.LeakyBucketConfig, t testing.TB) base.Bucket {
 
-	testBucket := testBucket(tester)
+	testBucket := base.GetTestBucket(t)
 	// Since this doesn't return the testbucket handle, disable the "open bucket counting system" by immediately
 	// decrementing counter
 	base.DecrNumOpenBuckets(testBucket.Bucket.GetName())
@@ -61,7 +61,7 @@ func setupTestDBWithCacheOptions(t testing.TB, options CacheOptions) (*Database,
 		CacheOptions: &options,
 	}
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
-	tBucket := testBucket(t)
+	tBucket := base.GetTestBucket(t)
 	context, err := NewDatabaseContext("db", tBucket.Bucket, false, dbcOptions)
 	assert.NoError(t, err, "Couldn't create context for database 'db'")
 	db, err := CreateDatabase(context)
@@ -77,7 +77,7 @@ func setupTestDBWithViewsEnabled(t testing.TB) (*Database, base.TestBucket) {
 		UseViews: true,
 	}
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
-	tBucket := testBucketUseViews(t)
+	tBucket := base.GetTestBucket(t)
 	context, err := NewDatabaseContext("db", tBucket.Bucket, false, dbcOptions)
 	assert.NoError(t, err, "Couldn't create context for database 'db'")
 	db, err := CreateDatabase(context)
@@ -91,7 +91,7 @@ func setupTestDBWithCustomSyncSeq(t testing.TB, customSeq uint64) (*Database, ba
 
 	dbcOptions := DatabaseContextOptions{}
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
-	tBucket := testBucket(t)
+	tBucket := base.GetTestBucket(t)
 
 	log.Printf("Initializing test %s to %d", base.SyncSeqPrefix, customSeq)
 	_, incrErr := tBucket.Incr(base.SyncSeqKey, customSeq, customSeq, 0)
@@ -102,58 +102,6 @@ func setupTestDBWithCustomSyncSeq(t testing.TB, customSeq uint64) (*Database, ba
 	db, err := CreateDatabase(context)
 	assert.NoError(t, err, "Couldn't create database 'db'")
 	return db, tBucket
-}
-
-func testBucket(tester testing.TB) base.TestBucket {
-	return testBucketInit(tester, true)
-}
-
-func testBucketUseViews(tester testing.TB) base.TestBucket {
-	return testBucketInit(tester, false)
-}
-
-func testBucketInit(tester testing.TB, useGSI bool) base.TestBucket {
-
-	// Retry loop in case the GSI indexes don't handle the flush and we need to drop them and retry
-	for i := 0; i < 2; i++ {
-
-		testBucket := base.GetTestBucket(tester)
-		err := installViews(testBucket.Bucket)
-		if err != nil {
-			tester.Fatalf("Couldn't connect to bucket: %v", err)
-			// ^^ effectively panics
-		}
-
-		if useGSI {
-			err = InitializeIndexes(testBucket.Bucket, base.TestUseXattrs(), 0)
-			if err != nil {
-				tester.Fatalf("Unable to initialize GSI indexes for test: %v", err)
-				// ^^ effectively panics
-			}
-
-			// Since GetTestBucket() always returns an _empty_ bucket, it's safe to wait for the indexes to be empty
-			gocbBucket, isGoCbBucket := base.AsGoCBBucket(testBucket.Bucket)
-			if isGoCbBucket {
-				waitForIndexRollbackErr := WaitForIndexEmpty(gocbBucket, testBucket.BucketSpec.UseXattrs)
-				if waitForIndexRollbackErr != nil {
-					base.Infof(base.KeyAll, "Error WaitForIndexEmpty: %v.  Drop indexes and retry", waitForIndexRollbackErr)
-					if err := base.DropAllBucketIndexes(gocbBucket); err != nil {
-						tester.Fatalf("Unable to drop GSI indexes for test: %v", err)
-						// ^^ effectively panics
-					}
-					testBucket.Close() // Close the bucket, it will get re-opened on next loop iteration
-					continue           // Goes to top of outer for loop to retry
-				}
-
-			}
-		}
-
-		return testBucket
-
-	}
-
-	panic(fmt.Sprintf("Failed to create a testbucket after multiple attempts"))
-
 }
 
 func setupTestLeakyDBWithCacheOptions(t *testing.T, options CacheOptions, leakyOptions base.LeakyBucketConfig) *Database {
@@ -202,7 +150,7 @@ func TestDatabase(t *testing.T) {
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	defer db.Close()
 
 	// Test creating & updating a document:
 	log.Printf("Create rev 1...")
@@ -297,7 +245,7 @@ func TestGetDeleted(t *testing.T) {
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	defer db.Close()
 
 	body := Body{"key1": 1234}
 	rev1id, _, err := db.Put("doc1", body)
@@ -338,7 +286,7 @@ func TestGetRemovedAsUser(t *testing.T) {
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	defer db.Close()
 
 	rev1body := Body{
 		"key1":     1234,
@@ -423,7 +371,7 @@ func TestGetRemoved(t *testing.T) {
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	defer db.Close()
 
 	rev1body := Body{
 		"key1":     1234,
@@ -499,7 +447,7 @@ func TestGetRemovedAndDeleted(t *testing.T) {
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	defer db.Close()
 
 	rev1body := Body{
 		"key1":     1234,
@@ -604,7 +552,7 @@ func TestAllDocsOnly(t *testing.T) {
 
 	db, testBucket := setupTestDBWithCacheOptions(t, cacheOptions)
 	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	defer db.Close()
 
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
@@ -710,7 +658,7 @@ func TestUpdatePrincipal(t *testing.T) {
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	defer db.Close()
 
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
@@ -743,7 +691,7 @@ func TestRepeatedConflict(t *testing.T) {
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	defer db.Close()
 
 	// Create rev 1 of "doc":
 	body := Body{"n": 1, "channels": []string{"all", "1"}}
@@ -784,7 +732,7 @@ func TestConflicts(t *testing.T) {
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	defer db.Close()
 
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
@@ -902,7 +850,7 @@ func TestConflictRevLimit(t *testing.T) {
 	}
 
 	AddOptionsFromEnvironmentVariables(&dbOptions)
-	bucket = testBucket(t)
+	bucket = base.GetTestBucket(t)
 	context, _ := NewDatabaseContext("db", bucket, false, dbOptions)
 	db, _ = CreateDatabase(context)
 	assert.Equal(t, uint32(DefaultRevsLimitConflicts), db.RevsLimit)
@@ -915,7 +863,7 @@ func TestConflictRevLimit(t *testing.T) {
 	}
 
 	AddOptionsFromEnvironmentVariables(&dbOptions)
-	bucket = testBucket(t)
+	bucket = base.GetTestBucket(t)
 	context, _ = NewDatabaseContext("db", bucket, false, dbOptions)
 	db, _ = CreateDatabase(context)
 	assert.Equal(t, uint32(DefaultRevsLimitNoConflicts), db.RevsLimit)
@@ -928,7 +876,7 @@ func TestNoConflictsMode(t *testing.T) {
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	defer db.Close()
 	// Strictly speaking, this flag should be set before opening the database, but it only affects
 	// Put operations and replication, so it doesn't make a difference if we do it afterwards.
 	db.Options.AllowConflicts = base.BoolPtr(false)
@@ -996,7 +944,7 @@ func TestNoConflictsMode(t *testing.T) {
 func TestAllowConflictsFalseTombstoneExistingConflict(t *testing.T) {
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	defer db.Close()
 
 	// Create documents with multiple non-deleted branches
 	log.Printf("Creating docs")
@@ -1073,7 +1021,7 @@ func TestAllowConflictsFalseTombstoneExistingConflict(t *testing.T) {
 func TestAllowConflictsFalseTombstoneExistingConflictNewEditsFalse(t *testing.T) {
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	defer db.Close()
 
 	// Create documents with multiple non-deleted branches
 	log.Printf("Creating docs")
@@ -1142,7 +1090,7 @@ func TestSyncFnOnPush(t *testing.T) {
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	defer db.Close()
 
 	db.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {
 		log("doc _id = "+doc._id+", _rev = "+doc._rev);
@@ -1180,7 +1128,7 @@ func TestInvalidChannel(t *testing.T) {
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	defer db.Close()
 
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
@@ -1193,7 +1141,7 @@ func TestAccessFunctionValidation(t *testing.T) {
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	defer db.Close()
 
 	var err error
 	db.ChannelMapper = channels.NewChannelMapper(`function(doc){access(doc.users,doc.userChannels);}`)
@@ -1227,7 +1175,7 @@ func TestAccessFunctionDb(t *testing.T) {
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	defer db.Close()
 
 	authenticator := auth.NewAuthenticator(db.Bucket, db)
 
@@ -1273,7 +1221,7 @@ func TestUpdateDesignDoc(t *testing.T) {
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	defer db.Close()
 
 	mapFunction := `function (doc, meta) { emit(); }`
 	err := db.PutDesignDoc("official", sgbucket.DesignDoc{
@@ -1309,7 +1257,7 @@ func TestPostWithExistingId(t *testing.T) {
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	defer db.Close()
 
 	// Test creating a document with existing id property:
 	customDocId := "customIdValue"
@@ -1345,7 +1293,7 @@ func TestPutWithUserSpecialProperty(t *testing.T) {
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	defer db.Close()
 
 	// Test creating a document with existing id property:
 	customDocId := "customIdValue"
@@ -1362,7 +1310,7 @@ func TestWithNullPropertyKey(t *testing.T) {
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	defer db.Close()
 
 	// Test creating a document with null property key
 	customDocId := "customIdValue"
@@ -1378,7 +1326,7 @@ func TestPostWithUserSpecialProperty(t *testing.T) {
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	defer db.Close()
 
 	// Test creating a document with existing id property:
 	customDocId := "customIdValue"
@@ -1413,7 +1361,7 @@ func TestRecentSequenceHistory(t *testing.T) {
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	defer db.Close()
 
 	seqTracker := uint64(0)
 
@@ -1490,7 +1438,7 @@ func TestChannelView(t *testing.T) {
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	defer db.Close()
 
 	// Create doc
 	log.Printf("Create doc 1...")
@@ -1530,7 +1478,7 @@ func TestConcurrentImport(t *testing.T) {
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	defer db.Close()
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyImport)()
 
@@ -1565,7 +1513,7 @@ func TestViewCustom(t *testing.T) {
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	defer db.Close()
 
 	// add some docs
 	docId := base.GenerateRandomID()
@@ -1749,7 +1697,7 @@ func mockOIDCOptionsWithBadName() *auth.OIDCOptions {
 }
 
 func TestNewDatabaseContextWithOIDCProviderOptionErrors(t *testing.T) {
-	testBucket := testBucket(t)
+	testBucket := base.GetTestBucket(t)
 	tests := []struct {
 		name          string
 		inputOptions  *auth.OIDCOptions
@@ -1798,7 +1746,7 @@ func TestNewDatabaseContextWithOIDCProviderOptionErrors(t *testing.T) {
 }
 
 func TestNewDatabaseContextWithOIDCProviderOptions(t *testing.T) {
-	testBucket := testBucket(t)
+	testBucket := base.GetTestBucket(t)
 	tests := []struct {
 		name          string
 		inputOptions  *auth.OIDCOptions
@@ -1856,7 +1804,7 @@ func TestGetOIDCProvider(t *testing.T) {
 	mockedOIDCOptions := mockOIDCOptions()
 	options := DatabaseContextOptions{OIDCOptions: mockedOIDCOptions}
 	AddOptionsFromEnvironmentVariables(&options)
-	testBucket := testBucket(t)
+	testBucket := base.GetTestBucket(t)
 
 	context, err := NewDatabaseContext("db", testBucket.Bucket, false, options)
 	assert.NoError(t, err, "Couldn't create context for database 'db'")
@@ -1886,7 +1834,7 @@ func TestSyncFnMutateBody(t *testing.T) {
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	defer db.Close()
 
 	db.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {
 		doc.key1 = "mutatedValue"

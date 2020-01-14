@@ -13,7 +13,7 @@ import (
 
 func TestSequenceAllocator(t *testing.T) {
 
-	testBucket := testBucket(t)
+	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
 	testStats := new(expvar.Map).Init()
@@ -77,7 +77,7 @@ func TestSequenceAllocator(t *testing.T) {
 
 func TestReleaseSequencesOnStop(t *testing.T) {
 
-	testBucket := testBucket(t)
+	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
 	testStats := new(expvar.Map).Init()

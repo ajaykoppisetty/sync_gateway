@@ -1,4 +1,4 @@
-package auth
+package db
 
 import (
 	"os"
@@ -8,7 +8,7 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	base.TestBucketPool = base.NewTestBucketPool(base.EmptyBucketReadier)
+	base.TestBucketPool = base.NewTestBucketPool(ViewsAndGSIBucketReadier)
 	defer base.TestBucketPool.Close()
 
 	os.Exit(m.Run())

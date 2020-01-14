@@ -11,7 +11,7 @@ import (
 
 func TestRemoveObsoleteDesignDocs(t *testing.T) {
 
-	testBucket := testBucket(t)
+	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
 	mapFunction := `function (doc, meta) { emit(); }`
@@ -75,7 +75,7 @@ func TestRemoveDesignDocsUseViewsTrueAndFalse(t *testing.T) {
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	defer db.Close()
 
 	mapFunction := `function (doc, meta){ emit(); }`
 

@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"errors"
 	"expvar"
 	"fmt"
@@ -12,6 +13,26 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
 )
+
+// ViewsAndGSIBucketReadier inherits from EmptyBucketReadier, but also initializes Views and GSI indexes.
+var ViewsAndGSIBucketReadier base.BucketReadierFunc = func(ctx context.Context, b *base.CouchbaseBucketGoCB, tbp *base.GocbTestBucketPool) error {
+	err := base.EmptyBucketReadier(ctx, b, tbp)
+	if err != nil {
+		return err
+	}
+
+	err = InitializeViews(b)
+	if err != nil {
+		return err
+	}
+
+	err = InitializeIndexes(b, base.TestUseXattrs(), 0)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
 
 // Workaround SG #3570 by doing a polling loop until the star channel query returns 0 results.
 // Uses the star channel index as a proxy to indicate that _all_ indexes are empty (which might not be true)

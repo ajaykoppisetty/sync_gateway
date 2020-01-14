@@ -637,11 +637,9 @@ func TestXattrWriteCasSimple(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
-	// testBucket := GetTestBucket(t)
-	// defer testBucket.Close()
-	// bucket := testBucket.Bucket
-	bucket, teardown := testBucketPool.GetTestBucket(t)
-	defer teardown()
+	testBucket := GetTestBucket(t)
+	defer testBucket.Close()
+	bucket := testBucket.Bucket
 
 	key := "TestWriteCasXATTRSimple"
 	xattrName := SyncXattrName

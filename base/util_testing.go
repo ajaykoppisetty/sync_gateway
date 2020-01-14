@@ -54,10 +54,6 @@ func GetTestBucket(t testing.TB) TestBucket {
 	}
 }
 
-func GetTestIndexBucket(tester testing.TB) TestBucket {
-	return GetBucketCommon(IndexBucket, tester)
-}
-
 func GetTestBucketSpec(bucketType CouchbaseBucketType) BucketSpec {
 
 	bucketName := DefaultTestBucketname
@@ -96,54 +92,6 @@ func GetTestBucketSpec(bucketType CouchbaseBucketType) BucketSpec {
 
 }
 
-func GetBucketCommon(bucketType CouchbaseBucketType, tester testing.TB) TestBucket {
-
-	spec := GetTestBucketSpec(bucketType)
-
-	if !spec.IsWalrusBucket() {
-
-		// If this is not testing against a walrus bucket, then it's testing against a Coucbhase Server bucket,
-		// and therefore needs to create the bucket if it doesn't already exist, or flush it if it does.
-
-		tbm := NewTestBucketManager(spec)
-		bucketExists, err := tbm.OpenTestBucket()
-		if err != nil {
-			tester.Fatalf("Error checking if bucket exists.  Spec: %+v err: %v", spec, err)
-		}
-		switch bucketExists {
-		case true:
-			// Empty it
-			if err := tbm.RecreateOrEmptyBucket(); err != nil {
-				tester.Fatalf("Error trying to empty bucket.  Spec: %+v.  err: %v", spec, err)
-
-			}
-		case false:
-			// Create a brand new bucket
-			// TODO: in this case, we should still wait until it's empty, just in case there was somehow residue
-			// TODO: in between deleting and recreating it, if it happened in rapid succession
-			if err := tbm.CreateTestBucket(); err != nil {
-				tester.Fatalf("Could not create bucket.  Spec: %+v Err: %v", spec, err)
-			}
-		}
-
-		// Close the bucket and any other temporary resources associated with the TestBucketManager
-		tbm.Close()
-
-	}
-
-	// Now open the bucket _again_ to ensure it's open with the correct driver
-	bucket, err := GetBucket(spec)
-	if err != nil {
-		tester.Fatalf("Could not open bucket: %v", err)
-	}
-
-	return TestBucket{
-		Bucket:     bucket,
-		BucketSpec: spec,
-	}
-
-}
-
 func GetBucketWithInvalidUsernamePassword(bucketType CouchbaseBucketType) (TestBucket, error) {
 
 	spec := GetTestBucketSpec(bucketType)
@@ -158,15 +106,6 @@ func GetBucketWithInvalidUsernamePassword(bucketType CouchbaseBucketType) (TestB
 	// Attempt to open a test bucket with invalid creds. We should expect an error.
 	bucket, err := GetBucket(spec)
 	return TestBucket{Bucket: bucket}, err
-
-}
-
-// Convenience function that will cause a bucket to be created if it doesn't already exist.
-func InitializeBucket(bucketType CouchbaseBucketType, tester testing.TB) {
-
-	// Create
-	tempBucket := GetBucketCommon(bucketType, tester)
-	tempBucket.Close()
 
 }
 
@@ -258,10 +197,6 @@ func (tbm *TestBucketManager) OpenTestBucket() (bucketExists bool, err error) {
 
 func (tbm *TestBucketManager) Close() {
 	tbm.Bucket.Close()
-}
-
-func (tbm *TestBucketManager) BucketItemCount() (itemCount int, err error) {
-	return tbm.Bucket.QueryBucketItemCount()
 }
 
 func (tbm *TestBucketManager) DropIndexes() error {
@@ -363,7 +298,7 @@ func (tbm *TestBucketManager) FlushBucket() error {
 	numTries := 0
 	for {
 
-		itemCount, err := tbm.BucketItemCount()
+		itemCount, err := tbm.Bucket.QueryBucketItemCount()
 		if err != nil {
 			return err
 		}
