@@ -205,8 +205,8 @@ func (tbp *GocbTestBucketPool) GetTestBucket(t testing.TB) (b Bucket, teardownFn
 			return
 		}
 
-		// tbp.Logf(ctx, "Teardown called - closing bucket")
-		// gocbBucket.Close()
+		tbp.Logf(ctx, "Teardown called - closing bucket")
+		gocbBucket.Close()
 		tbp.Logf(ctx, "Teardown called - Pushing into bucketReadier queue")
 		tbp.bucketReadierQueue <- gocbBucket
 	}
@@ -379,7 +379,8 @@ loop:
 			ctx := bucketCtx(ctx, b)
 			tbp.Logf(ctx, "bucketReadier got bucket")
 
-			go func(b *CouchbaseBucketGoCB) {
+			// can't run this in a goroutine, because the indexing service doesn't allow concurrent index creation across buckets
+			func(b *CouchbaseBucketGoCB) {
 				err := bucketReadierFunc(ctx, b, tbp)
 				if err != nil {
 					panic(err)

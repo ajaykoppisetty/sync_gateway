@@ -25,11 +25,13 @@ var ViewsAndGSIBucketReadier base.BucketReadierFunc = func(ctx context.Context, 
 	if err != nil {
 		return err
 	}
+	tbp.Logf(ctx, "bucket views initialized")
 
 	err = InitializeIndexes(b, base.TestUseXattrs(), 0)
 	if err != nil {
 		return err
 	}
+	tbp.Logf(ctx, "bucket indexes initialized")
 
 	return nil
 }
