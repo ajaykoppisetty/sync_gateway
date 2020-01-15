@@ -47,10 +47,11 @@ func (tb TestBucket) Close() {
 }
 
 func GetTestBucket(t testing.TB) TestBucket {
-	b, c := TestBucketPool.GetTestBucket(t)
+	bucket, spec, closeFn := TestBucketPool.GetTestBucketAndSpec(t)
 	return TestBucket{
-		Bucket:  b,
-		closeFn: c,
+		Bucket:     bucket,
+		BucketSpec: spec,
+		closeFn:    closeFn,
 	}
 }
 

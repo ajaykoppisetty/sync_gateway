@@ -18,7 +18,7 @@ import (
 
 const (
 	testBucketQuotaMB    = 100
-	testBucketNamePrefix = "sg-int-"
+	testBucketNamePrefix = "sg_int_"
 	testClusterUsername  = "Administrator"
 	testClusterPassword  = "password"
 
@@ -34,9 +34,11 @@ const (
 	testEnvVerbose = "SG_TEST_BUCKET_POOL_DEBUG"
 )
 
+type bucketName string
+
 type GocbTestBucketPool struct {
 	readyBucketPool    chan *CouchbaseBucketGoCB
-	bucketReadierQueue chan *CouchbaseBucketGoCB
+	bucketReadierQueue chan bucketName
 	cluster            *gocb.Cluster
 	clusterMgr         *gocb.ClusterManager
 	ctxCancelFunc      context.CancelFunc
@@ -123,7 +125,7 @@ func NewTestBucketPool(bucketReadierFunc BucketReadierFunc) *GocbTestBucketPool 
 
 	tbp := GocbTestBucketPool{
 		readyBucketPool:    make(chan *CouchbaseBucketGoCB, numBuckets),
-		bucketReadierQueue: make(chan *CouchbaseBucketGoCB, numBuckets),
+		bucketReadierQueue: make(chan bucketName, numBuckets),
 		cluster:            cluster,
 		clusterMgr:         cluster.Manager(testClusterUsername, testClusterPassword),
 		ctxCancelFunc:      ctxCancelFunc,
@@ -166,7 +168,7 @@ func (tbp *GocbTestBucketPool) Logf(ctx context.Context, format string, args ...
 // GetTestBucket returns a bucket to be used during a test.
 // The returned teardownFn must be called once the test is done,
 // which closes the bucket, readies it for a new test, and releases back into the pool.
-func (tbp *GocbTestBucketPool) GetTestBucket(t testing.TB) (b Bucket, teardownFn func()) {
+func (tbp *GocbTestBucketPool) GetTestBucketAndSpec(t testing.TB) (b Bucket, s BucketSpec, teardownFn func()) {
 
 	ctx := testCtx(t)
 
@@ -181,7 +183,7 @@ func (tbp *GocbTestBucketPool) GetTestBucket(t testing.TB) (b Bucket, teardownFn
 		ctx := bucketCtx(ctx, walrusBucket)
 		tbp.Logf(ctx, "Creating new walrus test bucket")
 
-		return walrusBucket, func() {
+		return walrusBucket, tbp.getBucketSpec(bucketName(walrusBucket.GetName())), func() {
 			tbp.Logf(ctx, "Teardown called - Closing walrus test bucket")
 			walrusBucket.Close()
 		}
@@ -198,7 +200,7 @@ func (tbp *GocbTestBucketPool) GetTestBucket(t testing.TB) (b Bucket, teardownFn
 	ctx = bucketCtx(ctx, gocbBucket)
 	tbp.Logf(ctx, "Got test bucket from pool")
 
-	return gocbBucket, func() {
+	return gocbBucket, tbp.getBucketSpec(bucketName(gocbBucket.GetName())), func() {
 		if tbp.preserveBuckets && t.Failed() {
 			tbp.Logf(ctx, "Test using bucket failed. Preserving bucket for later inspection")
 			atomic.AddUint32(&tbp.preservedBucketCount, 1)
@@ -208,7 +210,7 @@ func (tbp *GocbTestBucketPool) GetTestBucket(t testing.TB) (b Bucket, teardownFn
 		tbp.Logf(ctx, "Teardown called - closing bucket")
 		gocbBucket.Close()
 		tbp.Logf(ctx, "Teardown called - Pushing into bucketReadier queue")
-		tbp.bucketReadierQueue <- gocbBucket
+		tbp.bucketReadierQueue <- bucketName(gocbBucket.GetName())
 	}
 }
 
@@ -293,12 +295,12 @@ func (tbp *GocbTestBucketPool) createTestBuckets(numBuckets int) error {
 
 	// create required buckets
 	for i := 0; i < numBuckets; i++ {
-		bucketName := testBucketNamePrefix + strconv.Itoa(i)
-		ctx := bucketNameCtx(context.Background(), bucketName)
+		testBucketName := testBucketNamePrefix + strconv.Itoa(i)
+		ctx := bucketNameCtx(context.Background(), testBucketName)
 
 		var bucketExists bool
 		for _, b := range existingBuckets {
-			if bucketName == b.Name {
+			if testBucketName == b.Name {
 				tbp.Logf(ctx, "Skipping InsertBucket... Bucket already exists")
 				bucketExists = true
 			}
@@ -312,7 +314,7 @@ func (tbp *GocbTestBucketPool) createTestBuckets(numBuckets int) error {
 			if !bucketExists {
 				tbp.Logf(ctx, "Creating new test bucket")
 				err := tbp.clusterMgr.InsertBucket(&gocb.BucketSettings{
-					Name:          bucketName,
+					Name:          testBucketName,
 					Quota:         testBucketQuotaMB,
 					Type:          gocb.Couchbase,
 					FlushEnabled:  true,
@@ -328,30 +330,14 @@ func (tbp *GocbTestBucketPool) createTestBuckets(numBuckets int) error {
 				// time.Sleep(time.Second * 2 * time.Duration(numBuckets))
 			}
 
-			bucketSpec := tbp.defaultBucketSpec
-			bucketSpec.BucketName = bucketName
-
-			waitForNewBucketWorker := func() (shouldRetry bool, err error, value interface{}) {
-				gocbBucket, err := GetCouchbaseBucketGoCB(bucketSpec)
-				if err != nil {
-					tbp.Logf(ctx, "Retrying OpenBucket")
-					return true, err, nil
-				}
-				return false, nil, gocbBucket
-			}
-			err, val := RetryLoop("waitForNewBucket", waitForNewBucketWorker,
-				// The more buckets we're creating simultaneously on the cluster,
-				// the longer this seems to take, so scale the wait time.
-				CreateSleeperFunc(5*numBuckets, 1000))
+			_, err := tbp.openTestBucket(bucketName(testBucketName), CreateSleeperFunc(5*numBuckets, 1000))
 			if err != nil {
 				tbp.Logf(ctx, "Timed out trying to open new bucket: %v", err)
 				os.Exit(1)
 			}
 
-			gocbBucket := val.(*CouchbaseBucketGoCB)
-
 			tbp.Logf(ctx, "Putting gocbBucket onto bucketReadierQueue")
-			tbp.bucketReadierQueue <- gocbBucket
+			tbp.bucketReadierQueue <- bucketName(testBucketName)
 
 			wg.Done()
 		}(bucketExists)
@@ -375,21 +361,61 @@ loop:
 			tbp.Logf(context.Background(), "bucketReadier got ctx cancelled")
 			break loop
 
-		case b := <-tbp.bucketReadierQueue:
-			ctx := bucketCtx(ctx, b)
+		case testBucketName := <-tbp.bucketReadierQueue:
+			ctx := bucketNameCtx(ctx, string(testBucketName))
 			tbp.Logf(ctx, "bucketReadier got bucket")
 
 			// can't run this in a goroutine, because the indexing service doesn't allow concurrent index creation across buckets
-			func(b *CouchbaseBucketGoCB) {
-				err := bucketReadierFunc(ctx, b, tbp)
+			func(testBucketName bucketName) {
+				b, err := tbp.openTestBucket(testBucketName, CreateSleeperFunc(5, 1000))
 				if err != nil {
 					panic(err)
 				}
+
+				tbp.Logf(ctx, "Running bucket through readier function")
+				err = bucketReadierFunc(ctx, b, tbp)
+				if err != nil {
+					panic(err)
+				}
+
 				tbp.Logf(ctx, "Bucket ready, putting back into ready pool")
 				tbp.readyBucketPool <- b
-			}(b)
+			}(testBucketName)
 		}
 	}
 
 	tbp.Logf(context.Background(), "Stopping bucketReadier")
+}
+
+func (tbp *GocbTestBucketPool) openTestBucket(testBucketName bucketName, sleeper RetrySleeper) (*CouchbaseBucketGoCB, error) {
+
+	ctx := bucketNameCtx(context.Background(), string(testBucketName))
+
+	bucketSpec := tbp.defaultBucketSpec
+	bucketSpec.BucketName = string(testBucketName)
+
+	waitForNewBucketWorker := func() (shouldRetry bool, err error, value interface{}) {
+		gocbBucket, err := GetCouchbaseBucketGoCB(bucketSpec)
+		if err != nil {
+			tbp.Logf(ctx, "Retrying OpenBucket")
+			return true, err, nil
+		}
+		return false, nil, gocbBucket
+	}
+
+	tbp.Logf(ctx, "Opening bucket")
+	err, val := RetryLoop("waitForNewBucket", waitForNewBucketWorker,
+		// The more buckets we're creating simultaneously on the cluster,
+		// the longer this seems to take, so scale the wait time.
+		sleeper)
+
+	gocbBucket := val.(*CouchbaseBucketGoCB)
+
+	return gocbBucket, err
+}
+
+func (tbp *GocbTestBucketPool) getBucketSpec(testBucketName bucketName) BucketSpec {
+	bucketSpec := tbp.defaultBucketSpec
+	bucketSpec.BucketName = string(testBucketName)
+	return bucketSpec
 }
