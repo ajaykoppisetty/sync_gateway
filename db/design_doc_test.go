@@ -130,10 +130,10 @@ func TestRemoveObsoleteDesignDocsErrors(t *testing.T) {
 		DDocGetErrorCount:    1,
 		DDocDeleteErrorCount: 1,
 	}
-	testBucket := testLeakyBucket(leakyBucketConfig, t)
+	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
+	bucket := base.NewLeakyBucket(testBucket.Bucket, leakyBucketConfig)
 
-	bucket := testBucket
 	mapFunction := `function (doc, meta){ emit(); }`
 
 	err := bucket.PutDDoc(DesignDocSyncGatewayPrefix+"_test", sgbucket.DesignDoc{

@@ -37,17 +37,6 @@ func init() {
 	underscore.Disable() // It really slows down unit tests (by making otto.New take a lot longer)
 }
 
-func testLeakyBucket(config base.LeakyBucketConfig, t testing.TB) base.Bucket {
-
-	testBucket := base.GetTestBucket(t)
-	// Since this doesn't return the testbucket handle, disable the "open bucket counting system" by immediately
-	// decrementing counter
-	base.DecrNumOpenBuckets(testBucket.Bucket.GetName())
-
-	leakyBucket := base.NewLeakyBucket(testBucket.Bucket, config)
-	return leakyBucket
-}
-
 // Its important to call tearDownTestDB() on the database and .Close() on the TestBucket that is returned by this helper.
 // For example, if .Close() is not called on the TestBucket before the test is finished, it will be detected and
 // the next test will fail.
@@ -104,17 +93,18 @@ func setupTestDBWithCustomSyncSeq(t testing.TB, customSeq uint64) (*Database, ba
 	return db, tBucket
 }
 
-func setupTestLeakyDBWithCacheOptions(t *testing.T, options CacheOptions, leakyOptions base.LeakyBucketConfig) *Database {
+func setupTestLeakyDBWithCacheOptions(t *testing.T, options CacheOptions, leakyOptions base.LeakyBucketConfig) (*Database, base.TestBucket) {
 	dbcOptions := DatabaseContextOptions{
 		CacheOptions: &options,
 	}
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
-	leakyBucket := testLeakyBucket(leakyOptions, t)
+	testBucket := base.GetTestBucket(t)
+	leakyBucket := base.NewLeakyBucket(testBucket.Bucket, leakyOptions)
 	context, err := NewDatabaseContext("db", leakyBucket, false, dbcOptions)
 	assert.NoError(t, err, "Couldn't create context for database 'db'")
 	db, err := CreateDatabase(context)
 	assert.NoError(t, err, "Couldn't create database 'db'")
-	return db
+	return db, testBucket
 }
 
 // If certain environemnt variables are set, for example to turn on XATTR support, then update
@@ -1879,7 +1869,9 @@ func TestConcurrentPushSameNewRevision(t *testing.T) {
 		WriteUpdateCallback: writeUpdateCallback,
 	}
 
-	db = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
+	var testBucket base.TestBucket
+	db, testBucket = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
+	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 	enableCallback = true
 
@@ -1915,7 +1907,9 @@ func TestConcurrentPushSameNewNonWinningRevision(t *testing.T) {
 		WriteUpdateCallback: writeUpdateCallback,
 	}
 
-	db = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
+	var testBucket base.TestBucket
+	db, testBucket = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
+	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
 	body := Body{"name": "Olivia", "age": 80}
@@ -1970,7 +1964,9 @@ func TestConcurrentPushSameTombstoneWinningRevision(t *testing.T) {
 		WriteUpdateCallback: writeUpdateCallback,
 	}
 
-	db = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
+	var testBucket base.TestBucket
+	db, testBucket = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
+	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
 	body := Body{"name": "Olivia", "age": 80}
@@ -2025,7 +2021,9 @@ func TestConcurrentPushDifferentUpdateNonWinningRevision(t *testing.T) {
 		WriteUpdateCallback: writeUpdateCallback,
 	}
 
-	db = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
+	var testBucket base.TestBucket
+	db, testBucket = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
+	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
 	body := Body{"name": "Olivia", "age": 80}

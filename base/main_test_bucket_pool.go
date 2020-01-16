@@ -84,10 +84,10 @@ func testCluster(server string) *gocb.Cluster {
 	return cluster
 }
 
-type BucketReadierFunc func(ctx context.Context, b *CouchbaseBucketGoCB, tbp *GocbTestBucketPool) error
+type BucketWorkerFunc func(ctx context.Context, b *CouchbaseBucketGoCB, tbp *GocbTestBucketPool) error
 
 // EmptyBucketReadier ensures the bucket is empty.
-var EmptyBucketReadier BucketReadierFunc = func(ctx context.Context, b *CouchbaseBucketGoCB, tbp *GocbTestBucketPool) error {
+var EmptyBucketReadier BucketWorkerFunc = func(ctx context.Context, b *CouchbaseBucketGoCB, tbp *GocbTestBucketPool) error {
 	// Empty bucket
 	if itemCount, err := b.QueryBucketItemCount(); err != nil {
 		return err
@@ -103,9 +103,24 @@ var EmptyBucketReadier BucketReadierFunc = func(ctx context.Context, b *Couchbas
 	return nil
 }
 
+// NoopBucketWorkerFunc does nothing
+var NoopBucketWorkerFunc BucketWorkerFunc = func(ctx context.Context, b *CouchbaseBucketGoCB, tbp *GocbTestBucketPool) error {
+	return nil
+}
+
+var defaultBucketSpec = BucketSpec{
+	Server:          UnitTestUrl(),
+	CouchbaseDriver: GoCBCustomSGTranscoder,
+	Auth: TestAuthenticator{
+		Username: testClusterUsername,
+		Password: testClusterPassword,
+	},
+	UseXattrs: TestUseXattrs(),
+}
+
 // NewTestBucketPool initializes a new GocbTestBucketPool. To be called from TestMain for packages requiring test buckets.
 // Set useGSI to false to skip index creation for packages that don't require GSI, to speed up bucket readiness.
-func NewTestBucketPool(bucketReadierFunc BucketReadierFunc) *GocbTestBucketPool {
+func NewTestBucketPool(bucketReadierFunc, bucketInitFunc BucketWorkerFunc) *GocbTestBucketPool {
 	// We can safely skip setup when we want Walrus buckets to be used.
 	if !TestUseCouchbaseServer() {
 		return nil
@@ -114,8 +129,7 @@ func NewTestBucketPool(bucketReadierFunc BucketReadierFunc) *GocbTestBucketPool 
 	numBuckets := numBuckets()
 	// TODO: What about pooling servers too??
 	// That way, we can have unlimited buckets available in a single test pool... True horizontal scalability in tests!
-	server := UnitTestUrl()
-	cluster := testCluster(server)
+	cluster := testCluster(UnitTestUrl())
 
 	// Used to manage cancellation of worker goroutines
 	ctx, ctxCancelFunc := context.WithCancel(context.Background())
@@ -129,22 +143,14 @@ func NewTestBucketPool(bucketReadierFunc BucketReadierFunc) *GocbTestBucketPool 
 		cluster:            cluster,
 		clusterMgr:         cluster.Manager(testClusterUsername, testClusterPassword),
 		ctxCancelFunc:      ctxCancelFunc,
-		defaultBucketSpec: BucketSpec{
-			Server:          server,
-			CouchbaseDriver: GoCBCustomSGTranscoder,
-			Auth: TestAuthenticator{
-				Username: testClusterUsername,
-				Password: testClusterPassword,
-			},
-			UseXattrs: TestUseXattrs(),
-		},
-		preserveBuckets: preserveBuckets,
-		verbose:         verbose,
+		defaultBucketSpec:  defaultBucketSpec,
+		preserveBuckets:    preserveBuckets,
+		verbose:            verbose,
 	}
 
 	go tbp.bucketReadierWorker(ctx, bucketReadierFunc)
 
-	if err := tbp.createTestBuckets(numBuckets); err != nil {
+	if err := tbp.createTestBuckets(numBuckets, bucketInitFunc); err != nil {
 		log.Fatalf("Couldn't create test buckets: %v", err)
 	}
 
@@ -183,7 +189,7 @@ func (tbp *GocbTestBucketPool) GetTestBucketAndSpec(t testing.TB) (b Bucket, s B
 		ctx := bucketCtx(ctx, walrusBucket)
 		tbp.Logf(ctx, "Creating new walrus test bucket")
 
-		return walrusBucket, tbp.getBucketSpec(bucketName(walrusBucket.GetName())), func() {
+		return walrusBucket, getBucketSpec(bucketName(walrusBucket.GetName())), func() {
 			tbp.Logf(ctx, "Teardown called - Closing walrus test bucket")
 			walrusBucket.Close()
 		}
@@ -200,7 +206,7 @@ func (tbp *GocbTestBucketPool) GetTestBucketAndSpec(t testing.TB) (b Bucket, s B
 	ctx = bucketCtx(ctx, gocbBucket)
 	tbp.Logf(ctx, "Got test bucket from pool")
 
-	return gocbBucket, tbp.getBucketSpec(bucketName(gocbBucket.GetName())), func() {
+	return gocbBucket, getBucketSpec(bucketName(gocbBucket.GetName())), func() {
 		if tbp.preserveBuckets && t.Failed() {
 			tbp.Logf(ctx, "Test using bucket failed. Preserving bucket for later inspection")
 			atomic.AddUint32(&tbp.preservedBucketCount, 1)
@@ -284,7 +290,7 @@ func (tbp *GocbTestBucketPool) removeOldTestBuckets() error {
 }
 
 // creates a new set of integration test buckets and pushes them into the readier queue.
-func (tbp *GocbTestBucketPool) createTestBuckets(numBuckets int) error {
+func (tbp *GocbTestBucketPool) createTestBuckets(numBuckets int, bucketInitFunc BucketWorkerFunc) error {
 
 	wg := sync.WaitGroup{}
 
@@ -292,6 +298,8 @@ func (tbp *GocbTestBucketPool) createTestBuckets(numBuckets int) error {
 	if err != nil {
 		return err
 	}
+
+	openBuckets := make([]*CouchbaseBucketGoCB, numBuckets)
 
 	// create required buckets
 	for i := 0; i < numBuckets; i++ {
@@ -310,7 +318,7 @@ func (tbp *GocbTestBucketPool) createTestBuckets(numBuckets int) error {
 
 		// Bucket creation takes a few seconds for each bucket,
 		// so create and wait for readiness concurrently.
-		go func(bucketExists bool) {
+		go func(i int, bucketExists bool) {
 			if !bucketExists {
 				tbp.Logf(ctx, "Creating new test bucket")
 				err := tbp.clusterMgr.InsertBucket(&gocb.BucketSettings{
@@ -330,20 +338,36 @@ func (tbp *GocbTestBucketPool) createTestBuckets(numBuckets int) error {
 				// time.Sleep(time.Second * 2 * time.Duration(numBuckets))
 			}
 
-			_, err := tbp.openTestBucket(bucketName(testBucketName), CreateSleeperFunc(5*numBuckets, 1000))
+			b, err := tbp.openTestBucket(bucketName(testBucketName), CreateSleeperFunc(5*numBuckets, 1000))
 			if err != nil {
 				tbp.Logf(ctx, "Timed out trying to open new bucket: %v", err)
 				os.Exit(1)
 			}
-
-			tbp.Logf(ctx, "Putting gocbBucket onto bucketReadierQueue")
-			tbp.bucketReadierQueue <- bucketName(testBucketName)
+			openBuckets[i] = b
 
 			wg.Done()
-		}(bucketExists)
+		}(i, bucketExists)
 	}
 
 	wg.Wait()
+
+	// All the buckets are ready, so now we can perform some synchronous setup (e.g. Creating GSI indexes)
+	for i := 0; i < numBuckets; i++ {
+		testBucketName := testBucketNamePrefix + strconv.Itoa(i)
+		ctx := bucketNameCtx(context.Background(), testBucketName)
+
+		tbp.Logf(ctx, "running bucketInitFunc")
+		b := openBuckets[i]
+		if err := bucketInitFunc(ctx, b, tbp); err != nil {
+			tbp.Logf(ctx, "Error from bucketInitFunc: %v", err)
+			os.Exit(1)
+		}
+
+		b.Close()
+
+		tbp.Logf(ctx, "Putting gocbBucket onto bucketReadierQueue")
+		tbp.bucketReadierQueue <- bucketName(testBucketName)
+	}
 
 	return nil
 }
@@ -351,7 +375,7 @@ func (tbp *GocbTestBucketPool) createTestBuckets(numBuckets int) error {
 // bucketReadierWorker reads a channel of "dirty" buckets (bucketReadierQueue), does something to get them ready, and then puts them back into the pool.
 // The mechanism for getting the bucket ready can vary by package being tested (for instance, a package not requiring views or GSI can use the EmptyBucketReadier function)
 // A package requiring views or GSI, will need to pass in the db.ViewsAndGSIBucketReadier function.
-func (tbp *GocbTestBucketPool) bucketReadierWorker(ctx context.Context, bucketReadierFunc BucketReadierFunc) {
+func (tbp *GocbTestBucketPool) bucketReadierWorker(ctx context.Context, bucketReadierFunc BucketWorkerFunc) {
 	tbp.Logf(context.Background(), "Starting bucketReadier")
 
 loop:
@@ -365,8 +389,7 @@ loop:
 			ctx := bucketNameCtx(ctx, string(testBucketName))
 			tbp.Logf(ctx, "bucketReadier got bucket")
 
-			// can't run this in a goroutine, because the indexing service doesn't allow concurrent index creation across buckets
-			func(testBucketName bucketName) {
+			go func(testBucketName bucketName) {
 				b, err := tbp.openTestBucket(testBucketName, CreateSleeperFunc(5, 1000))
 				if err != nil {
 					panic(err)
@@ -414,8 +437,8 @@ func (tbp *GocbTestBucketPool) openTestBucket(testBucketName bucketName, sleeper
 	return gocbBucket, err
 }
 
-func (tbp *GocbTestBucketPool) getBucketSpec(testBucketName bucketName) BucketSpec {
-	bucketSpec := tbp.defaultBucketSpec
+func getBucketSpec(testBucketName bucketName) BucketSpec {
+	bucketSpec := defaultBucketSpec
 	bucketSpec.BucketName = string(testBucketName)
 	return bucketSpec
 }

@@ -11,13 +11,17 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestDuplicateDocID(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache)()
 
-	context := testBucketContext(t)
+	b := base.GetTestBucket(t)
+	defer b.Close()
+	context, err := NewDatabaseContext("db", b.Bucket, false, DatabaseContextOptions{})
+	require.NoError(t, err)
 	defer context.Close()
 	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
 
@@ -64,7 +68,10 @@ func TestLateArrivingSequence(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache)()
 
-	context := testBucketContext(t)
+	b := base.GetTestBucket(t)
+	defer b.Close()
+	context, err := NewDatabaseContext("db", b.Bucket, false, DatabaseContextOptions{})
+	require.NoError(t, err)
 	defer context.Close()
 	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
 
@@ -97,7 +104,10 @@ func TestLateSequenceAsFirst(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache)()
 
-	context := testBucketContext(t)
+	b := base.GetTestBucket(t)
+	defer b.Close()
+	context, err := NewDatabaseContext("db", b.Bucket, false, DatabaseContextOptions{})
+	require.NoError(t, err)
 	defer context.Close()
 	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
 
@@ -130,7 +140,10 @@ func TestDuplicateLateArrivingSequence(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache)()
 
-	context := testBucketContext(t)
+	b := base.GetTestBucket(t)
+	defer b.Close()
+	context, err := NewDatabaseContext("db", b.Bucket, false, DatabaseContextOptions{})
+	require.NoError(t, err)
 	defer context.Close()
 	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
 
@@ -204,7 +217,10 @@ func TestPrependChanges(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache)()
 
-	context := testBucketContext(t)
+	b := base.GetTestBucket(t)
+	defer b.Close()
+	context, err := NewDatabaseContext("db", b.Bucket, false, DatabaseContextOptions{})
+	require.NoError(t, err)
 	defer context.Close()
 	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
 
@@ -388,7 +404,10 @@ func TestChannelCacheRemove(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache)()
 
-	context := testBucketContext(t)
+	b := base.GetTestBucket(t)
+	defer b.Close()
+	context, err := NewDatabaseContext("db", b.Bucket, false, DatabaseContextOptions{})
+	require.NoError(t, err)
 	defer context.Close()
 	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
 
@@ -428,7 +447,10 @@ func TestChannelCacheStats(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache)()
 
-	context := testBucketContext(t)
+	b := base.GetTestBucket(t)
+	defer b.Close()
+	context, err := NewDatabaseContext("db", b.Bucket, false, DatabaseContextOptions{})
+	require.NoError(t, err)
 	defer context.Close()
 	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
 
@@ -499,7 +521,10 @@ func TestChannelCacheStatsOnPrune(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache)()
 
-	context := testBucketContext(t)
+	b := base.GetTestBucket(t)
+	defer b.Close()
+	context, err := NewDatabaseContext("db", b.Bucket, false, DatabaseContextOptions{})
+	require.NoError(t, err)
 	defer context.Close()
 	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
 
@@ -530,7 +555,10 @@ func TestChannelCacheStatsOnPrepend(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache)()
 
-	context := testBucketContext(t)
+	b := base.GetTestBucket(t)
+	defer b.Close()
+	context, err := NewDatabaseContext("db", b.Bucket, false, DatabaseContextOptions{})
+	require.NoError(t, err)
 	defer context.Close()
 	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
 
@@ -619,7 +647,10 @@ func TestBypassSingleChannelCache(t *testing.T) {
 func BenchmarkChannelCacheUniqueDocs_Ordered(b *testing.B) {
 
 	defer base.DisableTestLogging()()
-	context := testBucketContext(b)
+	testBucket := base.GetTestBucket(b)
+	defer testBucket.Close()
+	context, err := NewDatabaseContext("db", testBucket.Bucket, false, DatabaseContextOptions{})
+	require.NoError(b, err)
 	defer context.Close()
 	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
 
@@ -638,7 +669,10 @@ func BenchmarkChannelCacheUniqueDocs_Ordered(b *testing.B) {
 func BenchmarkChannelCacheRepeatedDocs5(b *testing.B) {
 
 	defer base.DisableTestLogging()()
-	context := testBucketContext(b)
+	testBucket := base.GetTestBucket(b)
+	defer testBucket.Close()
+	context, err := NewDatabaseContext("db", testBucket.Bucket, false, DatabaseContextOptions{})
+	require.NoError(b, err)
 	defer context.Close()
 	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
 
@@ -655,7 +689,10 @@ func BenchmarkChannelCacheRepeatedDocs5(b *testing.B) {
 func BenchmarkChannelCacheRepeatedDocs20(b *testing.B) {
 
 	defer base.DisableTestLogging()()
-	context := testBucketContext(b)
+	testBucket := base.GetTestBucket(b)
+	defer testBucket.Close()
+	context, err := NewDatabaseContext("db", testBucket.Bucket, false, DatabaseContextOptions{})
+	require.NoError(b, err)
 	defer context.Close()
 	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
 
@@ -672,7 +709,10 @@ func BenchmarkChannelCacheRepeatedDocs20(b *testing.B) {
 func BenchmarkChannelCacheRepeatedDocs50(b *testing.B) {
 
 	defer base.DisableTestLogging()()
-	context := testBucketContext(b)
+	testBucket := base.GetTestBucket(b)
+	defer testBucket.Close()
+	context, err := NewDatabaseContext("db", testBucket.Bucket, false, DatabaseContextOptions{})
+	require.NoError(b, err)
 	defer context.Close()
 	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
 
@@ -689,7 +729,10 @@ func BenchmarkChannelCacheRepeatedDocs50(b *testing.B) {
 func BenchmarkChannelCacheRepeatedDocs80(b *testing.B) {
 
 	defer base.DisableTestLogging()()
-	context := testBucketContext(b)
+	testBucket := base.GetTestBucket(b)
+	defer testBucket.Close()
+	context, err := NewDatabaseContext("db", testBucket.Bucket, false, DatabaseContextOptions{})
+	require.NoError(b, err)
 	defer context.Close()
 	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
 
@@ -707,7 +750,10 @@ func BenchmarkChannelCacheRepeatedDocs95(b *testing.B) {
 
 	defer base.SetUpBenchmarkLogging(base.LevelInfo, base.KeyHTTP)()
 
-	context := testBucketContext(b)
+	testBucket := base.GetTestBucket(b)
+	defer testBucket.Close()
+	context, err := NewDatabaseContext("db", testBucket.Bucket, false, DatabaseContextOptions{})
+	require.NoError(b, err)
 	defer context.Close()
 	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
 
@@ -724,7 +770,10 @@ func BenchmarkChannelCacheRepeatedDocs95(b *testing.B) {
 func BenchmarkChannelCacheUniqueDocs_Unordered(b *testing.B) {
 
 	defer base.DisableTestLogging()()
-	context := testBucketContext(b)
+	testBucket := base.GetTestBucket(b)
+	defer testBucket.Close()
+	context, err := NewDatabaseContext("db", testBucket.Bucket, false, DatabaseContextOptions{})
+	require.NoError(b, err)
 	defer context.Close()
 	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
 

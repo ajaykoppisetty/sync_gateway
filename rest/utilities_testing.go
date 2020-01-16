@@ -45,7 +45,7 @@ type RestTesterConfig struct {
 type RestTester struct {
 	*RestTesterConfig
 	tb                      testing.TB
-	RestTesterBucket        base.Bucket
+	testBucket              *base.TestBucket
 	RestTesterServerContext *ServerContext
 	AdminHandler            http.Handler
 	adminHandlerOnce        sync.Once
@@ -67,140 +67,81 @@ func NewRestTester(tb testing.TB, restConfig *RestTesterConfig) *RestTester {
 	return &rt
 }
 
-func NewRestTesterWithBucket(tb testing.TB, restConfig *RestTesterConfig, bucket base.Bucket) *RestTester {
-	rt := NewRestTester(tb, restConfig)
-	if bucket == nil {
-		panic("nil bucket supplied. Use NewRestTester if you aren't supplying a bucket")
-	}
-	rt.RestTesterBucket = bucket
-
-	return rt
-}
-
 func (rt *RestTester) Bucket() base.Bucket {
 
 	if rt.tb == nil {
 		panic("RestTester not properly initialized please use NewRestTester function")
 	}
 
-	if rt.RestTesterBucket != nil {
-		return rt.RestTesterBucket
+	if rt.testBucket != nil {
+		return rt.testBucket
 	}
 
-	// Put this in a loop in case certain operations fail, like waiting for GSI indexes to be empty.
-	// Limit number of attempts to 2.
-	for i := 0; i < 2; i++ {
+	testBucket := base.GetTestBucket(rt.tb)
+	rt.testBucket = &testBucket
 
-		// Initialize the bucket.  For couchbase-backed tests, triggers with creation/flushing of the bucket
-		if !rt.NoFlush {
-			tempBucket := base.GetTestBucket(rt.tb) // side effect of creating/flushing bucket
-			if rt.InitSyncSeq > 0 {
-				log.Printf("Initializing %s to %d", base.SyncSeqKey, rt.InitSyncSeq)
-				_, incrErr := tempBucket.Incr(base.SyncSeqKey, rt.InitSyncSeq, rt.InitSyncSeq, 0)
-				if incrErr != nil {
-					rt.tb.Fatalf("Error initializing %s in test bucket: %v", base.SyncSeqKey, incrErr)
-					return nil
-				}
-			}
-			tempBucket.Close()
-		} else {
-			if rt.InitSyncSeq > 0 {
-				rt.tb.Fatal("RestTester doesn't support NoFlush and InitSyncSeq in same test")
-				return nil
-			}
-		}
-
-		spec := base.GetTestBucketSpec(base.DataBucket)
-
-		username, password, _ := spec.Auth.GetCredentials()
-
-		server := spec.Server
-		gBucketCounter++
-
-		var syncFnPtr *string
-		if len(rt.SyncFn) > 0 {
-			syncFnPtr = &rt.SyncFn
-		}
-
-		corsConfig := &CORSConfig{
-			Origin:      []string{"http://example.com", "*", "http://staging.example.com"},
-			LoginOrigin: []string{"http://example.com"},
-			Headers:     []string{},
-			MaxAge:      1728000,
-		}
-
-		rt.RestTesterServerContext = NewServerContext(&ServerConfig{
-			CORS:           corsConfig,
-			Facebook:       &FacebookConfig{},
-			AdminInterface: &DefaultAdminInterface,
-		})
-
-		useXattrs := base.TestUseXattrs()
-
-		if rt.DatabaseConfig == nil {
-			// If no db config was passed in, create one
-			rt.DatabaseConfig = &DbConfig{}
-		}
-
-		// Force views if running against walrus
-		if !base.TestUseCouchbaseServer() {
-			rt.DatabaseConfig.UseViews = true
-		}
-
-		// numReplicas set to 0 for test buckets, since it should assume that there may only be one indexing node.
-		numReplicas := uint(0)
-		rt.DatabaseConfig.NumIndexReplicas = &numReplicas
-
-		rt.DatabaseConfig.BucketConfig = BucketConfig{
-			Server:   &server,
-			Bucket:   &spec.BucketName,
-			Username: username,
-			Password: password,
-		}
-		rt.DatabaseConfig.Name = "db"
-		rt.DatabaseConfig.Sync = syncFnPtr
-		rt.DatabaseConfig.EnableXattrs = &useXattrs
-		if rt.EnableNoConflictsMode {
-			boolVal := false
-			rt.DatabaseConfig.AllowConflicts = &boolVal
-		}
-
-		_, err := rt.RestTesterServerContext.AddDatabaseFromConfig(rt.DatabaseConfig)
-		if err != nil {
-			rt.tb.Fatalf("Error from AddDatabaseFromConfig: %v", err)
-			return nil
-		}
-		rt.RestTesterBucket = rt.RestTesterServerContext.Database("db").Bucket
-
-		// As long as bucket flushing wasn't disabled, wait for index to be empty (if this is a gocb bucket)
-		if !rt.NoFlush {
-			asGoCbBucket, isGoCbBucket := base.AsGoCBBucket(rt.RestTesterBucket)
-			if isGoCbBucket {
-				if err := db.WaitForIndexEmpty(asGoCbBucket, spec.UseXattrs); err != nil {
-					base.Infof(base.KeyAll, "WaitForIndexEmpty returned an error: %v.  Dropping indexes and retrying", err)
-					// if WaitForIndexEmpty returns error, drop the indexes and retry
-					if err := base.DropAllBucketIndexes(asGoCbBucket); err != nil {
-						rt.tb.Fatalf("Failed to drop bucket indexes: %v", err)
-						return nil
-					}
-
-					continue // Go to the top of the for loop to retry
-				}
-			}
-		}
-
-		if !rt.noAdminParty {
-			rt.SetAdminParty(true)
-		}
-
-		return rt.RestTesterBucket
+	var syncFnPtr *string
+	if len(rt.SyncFn) > 0 {
+		syncFnPtr = &rt.SyncFn
 	}
 
-	rt.tb.Fatalf("Failed to create a RestTesterBucket after multiple attempts")
-	return nil
+	corsConfig := &CORSConfig{
+		Origin:      []string{"http://example.com", "*", "http://staging.example.com"},
+		LoginOrigin: []string{"http://example.com"},
+		Headers:     []string{},
+		MaxAge:      1728000,
+	}
+
+	rt.RestTesterServerContext = NewServerContext(&ServerConfig{
+		CORS:           corsConfig,
+		Facebook:       &FacebookConfig{},
+		AdminInterface: &DefaultAdminInterface,
+	})
+
+	useXattrs := base.TestUseXattrs()
+
+	if rt.DatabaseConfig == nil {
+		// If no db config was passed in, create one
+		rt.DatabaseConfig = &DbConfig{}
+	}
+
+	// Force views if running against walrus
+	if !base.TestUseCouchbaseServer() {
+		rt.DatabaseConfig.UseViews = true
+	}
+
+	// numReplicas set to 0 for test buckets, since it should assume that there may only be one indexing node.
+	numReplicas := uint(0)
+	rt.DatabaseConfig.NumIndexReplicas = &numReplicas
+	un, pw, _ := rt.testBucket.BucketSpec.Auth.GetCredentials()
+	rt.DatabaseConfig.BucketConfig = BucketConfig{
+		Server:   &rt.testBucket.BucketSpec.Server,
+		Bucket:   &rt.testBucket.BucketSpec.BucketName,
+		Username: un,
+		Password: pw,
+	}
+	rt.DatabaseConfig.Name = "db"
+	rt.DatabaseConfig.Sync = syncFnPtr
+	rt.DatabaseConfig.EnableXattrs = &useXattrs
+	if rt.EnableNoConflictsMode {
+		boolVal := false
+		rt.DatabaseConfig.AllowConflicts = &boolVal
+	}
+
+	_, err := rt.RestTesterServerContext.AddDatabaseFromConfig(rt.DatabaseConfig)
+	if err != nil {
+		rt.tb.Fatalf("Error from AddDatabaseFromConfig: %v", err)
+		return nil
+	}
+
+	if !rt.noAdminParty {
+		rt.SetAdminParty(true)
+	}
+
+	return testBucket.Bucket
 }
 
-func (rt *RestTester) BucketAllowEmptyPassword() base.Bucket {
+/*func (rt *RestTester) BucketAllowEmptyPassword() base.Bucket {
 
 	//Create test DB with "AllowEmptyPassword" true
 	server := "walrus:"
@@ -228,7 +169,7 @@ func (rt *RestTester) BucketAllowEmptyPassword() base.Bucket {
 	rt.RestTesterBucket = rt.RestTesterServerContext.Database("db").Bucket
 
 	return rt.RestTesterBucket
-}
+}*/
 
 func (rt *RestTester) ServerContext() *ServerContext {
 	rt.Bucket()
@@ -306,6 +247,9 @@ func (rt *RestTester) DisableGuestUser() {
 func (rt *RestTester) Close() {
 	if rt.tb == nil {
 		panic("RestTester not properly initialized please use NewRestTester function")
+	}
+	if rt.testBucket != nil {
+		rt.testBucket.Close()
 	}
 	if rt.RestTesterServerContext != nil {
 		rt.RestTesterServerContext.Close()

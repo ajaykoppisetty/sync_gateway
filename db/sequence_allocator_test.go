@@ -150,15 +150,17 @@ func TestSequenceAllocatorDeadlock(t *testing.T) {
 		}
 	}
 
-	testBucket := testLeakyBucket(base.LeakyBucketConfig{IncrCallback: incrCallback}, t)
+	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
+	bucket := base.NewLeakyBucket(testBucket.Bucket, base.LeakyBucketConfig{IncrCallback: incrCallback})
+
 	testStats := new(expvar.Map).Init()
 
 	oldFrequency := MaxSequenceIncrFrequency
 	defer func() { MaxSequenceIncrFrequency = oldFrequency }()
 	MaxSequenceIncrFrequency = 1000 * time.Millisecond
 
-	a, err = newSequenceAllocator(testBucket, testStats)
+	a, err = newSequenceAllocator(bucket, testStats)
 	// Reduce sequence wait for Stop testing
 	a.releaseSequenceWait = 10 * time.Millisecond
 	assert.NoError(t, err, "error creating allocator")

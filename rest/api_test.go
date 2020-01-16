@@ -1276,6 +1276,7 @@ func TestBulkDocsChangeToAccess(t *testing.T) {
 
 	//Create a test user
 	user, err = a.NewUser("user1", "letmein", nil)
+	assert.NoError(t, err)
 	assert.NoError(t, a.Save(user))
 
 	input := `{"docs": [{"_id": "bulk1", "type" : "setaccess", "owner":"user1" , "channel":"chan1"}, {"_id": "bulk2" , "channel":"chan1"}]}`

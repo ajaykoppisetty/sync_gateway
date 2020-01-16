@@ -1965,9 +1965,7 @@ func TestBlipDeltaSyncPull(t *testing.T) {
 
 	sgUseDeltas := base.IsEnterpriseEdition()
 	rtConfig := RestTesterConfig{DatabaseConfig: &DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: &sgUseDeltas}}}
-	b := base.GetTestBucket(t)
-	defer b.Close()
-	rt := NewRestTesterWithBucket(t, &rtConfig, b)
+	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	deltaSentCount := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDeltaSync().Get(base.StatKeyDeltasSent))
@@ -2027,9 +2025,7 @@ func TestBlipDeltaSyncPullRemoved(t *testing.T) {
 
 	sgUseDeltas := base.IsEnterpriseEdition()
 	rtConfig := RestTesterConfig{noAdminParty: true, DatabaseConfig: &DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: &sgUseDeltas}}}
-	b := base.GetTestBucket(t)
-	defer b.Close()
-	rt := NewRestTesterWithBucket(t, &rtConfig, b)
+	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	client, err := NewBlipTesterClientOpts(t, rt, &BlipTesterClientOpts{
@@ -2083,9 +2079,7 @@ func TestBlipDeltaSyncPullTombstoned(t *testing.T) {
 
 	sgUseDeltas := base.IsEnterpriseEdition()
 	rtConfig := RestTesterConfig{noAdminParty: true, DatabaseConfig: &DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: &sgUseDeltas}}}
-	b := base.GetTestBucket(t)
-	defer b.Close()
-	rt := NewRestTesterWithBucket(t, &rtConfig, b)
+	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	deltaCacheHitsStart := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDeltaSync().Get(base.StatKeyDeltaCacheHits))
@@ -2165,9 +2159,7 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 
 	sgUseDeltas := base.IsEnterpriseEdition()
 	rtConfig := RestTesterConfig{noAdminParty: true, DatabaseConfig: &DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: &sgUseDeltas}}}
-	b := base.GetTestBucket(t)
-	defer b.Close()
-	rt := NewRestTesterWithBucket(t, &rtConfig, b)
+	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	deltaCacheHitsStart := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDeltaSync().Get(base.StatKeyDeltaCacheHits))
@@ -2318,9 +2310,7 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 
 	sgUseDeltas := base.IsEnterpriseEdition()
 	rtConfig := RestTesterConfig{DatabaseConfig: &DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: &sgUseDeltas}}}
-	b := base.GetTestBucket(t)
-	defer b.Close()
-	rt := NewRestTesterWithBucket(t, &rtConfig, b)
+	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	client, err := NewBlipTesterClient(t, rt)

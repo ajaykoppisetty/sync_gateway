@@ -602,7 +602,8 @@ func TestOldRevisionStorageError(t *testing.T) {
 	leakyConfig := base.LeakyBucketConfig{
 		ForceErrorSetRawKeys: []string{forceErrorKey},
 	}
-	db := setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), leakyConfig)
+	db, testBucket := setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), leakyConfig)
+	defer testBucket.Close()
 	defer db.Close()
 
 	db.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {channel(doc.channels);}`)

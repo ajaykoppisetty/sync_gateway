@@ -76,16 +76,6 @@ func logEntry(seq uint64, docid string, revid string, channelNames []string) *Lo
 	return entry
 }
 
-func testBucketContext(t testing.TB) *DatabaseContext {
-	contextOptions := DatabaseContextOptions{}
-	cacheOptions := DefaultCacheOptions()
-	contextOptions.CacheOptions = &cacheOptions
-	testBucket := base.GetTestBucket(t)
-	context, err := NewDatabaseContext("db", testBucket.Bucket, false, contextOptions)
-	require.NoError(t, err)
-	return context
-}
-
 func TestSkippedSequenceList(t *testing.T) {
 
 	skipList := NewSkippedSequenceList()
@@ -128,8 +118,8 @@ func TestSkippedSequenceList(t *testing.T) {
 func TestLateSequenceHandling(t *testing.T) {
 
 	context, testBucket := setupTestDBWithCacheOptions(t, DefaultCacheOptions())
-	defer context.Close()
 	defer testBucket.Close()
+	defer context.Close()
 
 	cacheStats := &expvar.Map{}
 	cache := newSingleChannelCache(context, "Test1", 0, cacheStats)
@@ -194,7 +184,10 @@ func TestLateSequenceHandling(t *testing.T) {
 
 func TestLateSequenceHandlingWithMultipleListeners(t *testing.T) {
 
-	context := testBucketContext(t)
+	b := base.GetTestBucket(t)
+	defer b.Close()
+	context, err := NewDatabaseContext("db", b.Bucket, false, DatabaseContextOptions{})
+	require.NoError(t, err)
 	defer context.Close()
 	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
 	cache := newSingleChannelCache(context, "Test1", 0, &expvar.Map{})
@@ -255,8 +248,8 @@ func TestLateSequenceErrorRecovery(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges, base.KeyCache)()
 
 	db, testBucket := setupTestDBWithCacheOptions(t, shortWaitCache())
-	defer db.Close()
 	defer testBucket.Close()
+	defer db.Close()
 
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
@@ -377,8 +370,8 @@ func TestLateSequenceHandlingDuringCompact(t *testing.T) {
 	cacheOptions := shortWaitCache()
 	cacheOptions.ChannelCacheOptions.MaxNumChannels = 100
 	db, testBucket := setupTestDBWithCacheOptions(t, cacheOptions)
-	defer db.Close()
 	defer testBucket.Close()
+	defer db.Close()
 
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
@@ -556,8 +549,8 @@ func TestChannelCacheBufferingWithUserDoc(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache, base.KeyChanges, base.KeyDCP)()
 
 	db, testBucket := setupTestDB(t)
-	defer db.Close()
 	defer testBucket.Close()
+	defer db.Close()
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
 	// Simulate seq 1 (user doc) being delayed - write 2 first
@@ -595,8 +588,8 @@ func TestChannelCacheBackfill(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache, base.KeyChanges)()
 
 	db, testBucket := setupTestDBWithCacheOptions(t, shortWaitCache())
-	defer db.Close()
 	defer testBucket.Close()
+	defer db.Close()
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
 	// Create a user with access to channel ABC
@@ -796,7 +789,7 @@ func TestLowSequenceHandling(t *testing.T) {
 
 	changes, err := verifySequencesInFeed(feed, []uint64{1, 2, 5, 6})
 	goassert.True(t, err == nil)
-	goassert.Equals(t, len(changes), 4)
+	require.Len(t, changes, 4)
 	goassert.DeepEquals(t, changes[0], &ChangeEntry{
 		Seq:     SequenceID{Seq: 1, TriggeredBy: 0, LowSeq: 2},
 		ID:      "doc-1",
@@ -993,7 +986,8 @@ func TestChannelQueryCancellation(t *testing.T) {
 		PostQueryCallback: postQueryCallback,
 	}
 
-	db := setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
+	db, testBucket := setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
+	defer testBucket.Close()
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 	defer db.Close()
 
@@ -1283,7 +1277,8 @@ func TestSkippedViewRetrieval(t *testing.T) {
 	leakyConfig := base.LeakyBucketConfig{
 		TapFeedMissingDocs: []string{"doc-3", "doc-7", "doc-10", "doc-13", "doc-14"},
 	}
-	db := setupTestLeakyDBWithCacheOptions(t, shortWaitCache(), leakyConfig)
+	db, testBucket := setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), leakyConfig)
+	defer testBucket.Close()
 	defer db.Close()
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
@@ -1357,7 +1352,8 @@ func TestStopChangeCache(t *testing.T) {
 	leakyConfig := base.LeakyBucketConfig{
 		TapFeedMissingDocs: []string{"doc-3"},
 	}
-	db := setupTestLeakyDBWithCacheOptions(t, cacheOptions, leakyConfig)
+	db, testBucket := setupTestLeakyDBWithCacheOptions(t, cacheOptions, leakyConfig)
+	defer testBucket.Close()
 
 	// Write sequences direct
 	WriteDirect(db, []string{"ABC"}, 1)
@@ -2006,7 +2002,9 @@ func BenchmarkProcessEntry(b *testing.B) {
 	for _, bm := range processEntryBenchmarks {
 		b.Run(bm.name, func(b *testing.B) {
 			b.StopTimer()
-			context := testBucketContext(b)
+			testBucket := base.GetTestBucket(b)
+			context, err := NewDatabaseContext("db", testBucket.Bucket, false, DatabaseContextOptions{})
+			require.NoError(b, err)
 			changeCache := &changeCache{}
 			if err := changeCache.Init(context, nil, nil); err != nil {
 				log.Printf("Init failed for changeCache: %v", err)
@@ -2231,7 +2229,9 @@ func BenchmarkDocChanged(b *testing.B) {
 	for _, bm := range processEntryBenchmarks {
 		b.Run(bm.name, func(b *testing.B) {
 			b.StopTimer()
-			context := testBucketContext(b)
+			testBucket := base.GetTestBucket(b)
+			context, err := NewDatabaseContext("db", testBucket.Bucket, false, DatabaseContextOptions{})
+			require.NoError(b, err)
 			changeCache := &changeCache{}
 			if err := changeCache.Init(context, nil, nil); err != nil {
 				log.Printf("Init failed for changeCache: %v", err)
