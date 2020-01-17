@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	testBucketQuotaMB    = 100
+	testBucketQuotaMB    = 250
 	testBucketNamePrefix = "sg_int_"
 	testClusterUsername  = "Administrator"
 	testClusterPassword  = "password"
@@ -86,8 +86,8 @@ func testCluster(server string) *gocb.Cluster {
 
 type BucketWorkerFunc func(ctx context.Context, b *CouchbaseBucketGoCB, tbp *GocbTestBucketPool) error
 
-// EmptyBucketReadier ensures the bucket is empty.
-var EmptyBucketReadier BucketWorkerFunc = func(ctx context.Context, b *CouchbaseBucketGoCB, tbp *GocbTestBucketPool) error {
+// BucketFlushReadier ensures the bucket is empty.
+var BucketFlushReadier BucketWorkerFunc = func(ctx context.Context, b *CouchbaseBucketGoCB, tbp *GocbTestBucketPool) error {
 	// Empty bucket
 	if itemCount, err := b.QueryBucketItemCount(); err != nil {
 		return err
@@ -121,7 +121,7 @@ var defaultBucketSpec = BucketSpec{
 // NewTestBucketPool initializes a new GocbTestBucketPool. To be called from TestMain for packages requiring test buckets.
 // Set useGSI to false to skip index creation for packages that don't require GSI, to speed up bucket readiness.
 func NewTestBucketPool(bucketReadierFunc, bucketInitFunc BucketWorkerFunc) *GocbTestBucketPool {
-	// We can safely skip setup when we want Walrus buckets to be used.
+	// We can safely skip setup when we want Walrus buckets to be used. They'll be created on-demand via GetTestBucketAndSpec.
 	if !TestUseCouchbaseServer() {
 		return nil
 	}
@@ -373,7 +373,7 @@ func (tbp *GocbTestBucketPool) createTestBuckets(numBuckets int, bucketInitFunc 
 }
 
 // bucketReadierWorker reads a channel of "dirty" buckets (bucketReadierQueue), does something to get them ready, and then puts them back into the pool.
-// The mechanism for getting the bucket ready can vary by package being tested (for instance, a package not requiring views or GSI can use the EmptyBucketReadier function)
+// The mechanism for getting the bucket ready can vary by package being tested (for instance, a package not requiring views or GSI can use the BucketFlushReadier function)
 // A package requiring views or GSI, will need to pass in the db.ViewsAndGSIBucketReadier function.
 func (tbp *GocbTestBucketPool) bucketReadierWorker(ctx context.Context, bucketReadierFunc BucketWorkerFunc) {
 	tbp.Logf(context.Background(), "Starting bucketReadier")

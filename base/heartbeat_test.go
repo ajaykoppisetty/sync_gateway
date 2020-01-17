@@ -114,7 +114,7 @@ func TestCouchbaseHeartbeaters(t *testing.T) {
 			// Validate current node list
 			activeNodes, err := handler2.GetNodes()
 			require.NoError(t, err, "Error getting node list")
-			assert.Equal(t, 2, len(activeNodes))
+			require.Len(t, activeNodes, 2)
 			assert.NotContains(t, activeNodes, "node1")
 			assert.Contains(t, activeNodes, "node2")
 			assert.Contains(t, activeNodes, "node3")
@@ -209,7 +209,7 @@ func TestCBGTManagerHeartbeater(t *testing.T) {
 	// Validate current node list
 	activeNodes, err := handler2.GetNodes()
 	require.NoError(t, err, "Error getting node list")
-	assert.Equal(t, 2, len(activeNodes))
+	require.Len(t, activeNodes, 2)
 	assert.NotContains(t, activeNodes, "node1")
 	assert.Contains(t, activeNodes, "node2")
 	assert.Contains(t, activeNodes, "node3")

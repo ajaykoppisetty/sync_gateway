@@ -9,8 +9,10 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
+// FIXME: This is problematic, as it drops all existing indexes, which disrupts the bucket-pooling approach which requires a primary index, as well as the standard SG indexes to be present after the test is done.
 func TestInitializeIndexes(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Index tests require Couchbase Bucket")
@@ -26,7 +28,7 @@ func TestInitializeIndexes(t *testing.T) {
 	dropErr := base.DropAllBucketIndexes(goCbBucket)
 	assert.NoError(t, dropErr, "Error dropping all indexes")
 
-	initErr := InitializeIndexes(testBucket, db.UseXattrs(), 0)
+	initErr := InitializeIndexes(testBucket, db.UseXattrs(), 0, true)
 	assert.NoError(t, initErr, "Error initializing all indexes")
 
 	validateErr := validateAllIndexesOnline(testBucket)
@@ -91,7 +93,7 @@ func TestPostUpgradeIndexesSimple(t *testing.T) {
 	log.Printf("removedIndexes: %+v", removedIndexes)
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in setup case")
 
-	err := InitializeIndexes(testBucket, db.UseXattrs(), 0)
+	err := InitializeIndexes(testBucket, db.UseXattrs(), 0, true)
 	assert.NoError(t, err)
 
 	// Running w/ opposite xattrs flag should preview removal of the indexes associated with this db context
@@ -176,7 +178,7 @@ func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 	assert.NoError(t, removeErr)
 
 	removedIndexes, removeErr = removeObsoleteIndexes(gocbBucket, false, db.UseXattrs(), false)
-	assert.Equal(t, 0, len(removedIndexes))
+	require.Len(t, removedIndexes, 0)
 	assert.NoError(t, removeErr)
 
 	// Cleanup design docs created during test

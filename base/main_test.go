@@ -7,7 +7,7 @@ import (
 
 func TestMain(m *testing.M) {
 	// base tests require GSI
-	TestBucketPool = NewTestBucketPool(EmptyBucketReadier, NoopBucketWorkerFunc)
+	TestBucketPool = NewTestBucketPool(BucketFlushReadier, NoopBucketWorkerFunc)
 	defer TestBucketPool.Close()
 
 	os.Exit(m.Run())

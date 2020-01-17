@@ -8,7 +8,7 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	base.TestBucketPool = base.NewTestBucketPool(base.EmptyBucketReadier, base.NoopBucketWorkerFunc)
+	base.TestBucketPool = base.NewTestBucketPool(base.BucketFlushReadier, base.NoopBucketWorkerFunc)
 	defer base.TestBucketPool.Close()
 
 	os.Exit(m.Run())

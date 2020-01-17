@@ -270,7 +270,7 @@ func (i *SGIndex) createIfNeeded(bucket *base.CouchbaseBucketGoCB, useXattrs boo
 }
 
 // Initializes Sync Gateway indexes for bucket.  Creates required indexes if not found, then waits for index readiness.
-func InitializeIndexes(bucket base.Bucket, useXattrs bool, numReplicas uint) error {
+func InitializeIndexes(bucket base.Bucket, useXattrs bool, numReplicas uint, createPrimary bool) error {
 
 	gocbBucket, ok := base.AsGoCBBucket(bucket)
 	if !ok {
@@ -283,6 +283,14 @@ func InitializeIndexes(bucket base.Bucket, useXattrs bool, numReplicas uint) err
 	}
 
 	base.Infof(base.KeyAll, "Initializing indexes with numReplicas: %d...", numReplicas)
+
+	if createPrimary {
+		res, err := gocbBucket.Query(`CREATE PRIMARY INDEX ON $_bucket`, nil, gocb.NotBounded, true)
+		if err != nil {
+			return err
+		}
+		res.Close()
+	}
 
 	// Create any indexes that aren't present
 	deferredIndexes := make([]string, 0)

@@ -2102,8 +2102,8 @@ func TestMakeFeedBytes(t *testing.T) {
 
 	body, xattr, err := parseXattrStreamData(base.SyncXattrName, rawBytes)
 	assert.NoError(t, err)
-	assert.Equal(t, 11, len(body))
-	assert.Equal(t, 13, len(xattr))
+	require.Len(t, body, 11)
+	require.Len(t, xattr, 13)
 
 }
 

@@ -584,8 +584,8 @@ func TestConcurrentUserWrites(t *testing.T) {
 	}
 
 	assert.Equal(t, email, user.Email())
-	assert.Equal(t, 3, len(user.Channels()))
-	assert.Equal(t, 2, len(user.RoleNames()))
+	require.Len(t, user.Channels(), 3)
+	require.Len(t, user.RoleNames(), 2)
 
 	// Check the password hash bcrypt cost
 	userImpl := user.(*userImpl)

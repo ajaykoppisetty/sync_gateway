@@ -566,7 +566,7 @@ func TestAllDocsOnly(t *testing.T) {
 
 	alldocs, err := allDocIDs(db)
 	assert.NoError(t, err, "AllDocIDs failed")
-	assert.Equal(t, 100, len(alldocs))
+	require.Len(t, alldocs, 100)
 	for i, entry := range alldocs {
 		assert.True(t, entry.Equal(ids[i]))
 	}
@@ -577,7 +577,7 @@ func TestAllDocsOnly(t *testing.T) {
 
 	alldocs, err = allDocIDs(db)
 	assert.NoError(t, err, "AllDocIDs failed")
-	assert.Equal(t, 99, len(alldocs))
+	require.Len(t, alldocs, 99)
 	for i, entry := range alldocs {
 		j := i
 		if i >= 23 {
@@ -591,7 +591,7 @@ func TestAllDocsOnly(t *testing.T) {
 	err = db.changeCache.waitForSequence(context.TODO(), 101, base.DefaultWaitForSequence)
 	require.NoError(t, err)
 	changeLog := db.GetChangeLog("all", 0)
-	assert.Equal(t, 50, len(changeLog))
+	require.Len(t, changeLog, 50)
 	assert.Equal(t, "alldoc-51", changeLog[0].DocID)
 
 	// Now check the changes feed:
@@ -600,7 +600,7 @@ func TestAllDocsOnly(t *testing.T) {
 	defer close(options.Terminator)
 	changes, err := db.GetChanges(channels.SetOf(t, "all"), options)
 	assert.NoError(t, err, "Couldn't GetChanges")
-	assert.Equal(t, 100, len(changes))
+	require.Len(t, changes, 100)
 
 	for i, change := range changes {
 		docIndex := i

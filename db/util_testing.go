@@ -14,17 +14,17 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// ViewsAndGSIBucketReadier inherits from EmptyBucketReadier, but also initializes Views and GSI indexes. It is run asynchronously as soon as a test is finished with a bucket.
+// ViewsAndGSIBucketReadier empties the bucket, initializes Views, and waits until GSI indexes are empty. It is run asynchronously as soon as a test is finished with a bucket.
 var ViewsAndGSIBucketReadier base.BucketWorkerFunc = func(ctx context.Context, b *base.CouchbaseBucketGoCB, tbp *base.GocbTestBucketPool) error {
 
-	tbp.Logf(ctx, "checking if bucket is empty")
 	if itemCount, err := b.QueryBucketItemCount(); err != nil {
 		return err
 	} else if itemCount == 0 {
 		tbp.Logf(ctx, "Bucket already empty - skipping")
 	} else {
 		tbp.Logf(ctx, "Bucket not empty (%d items), emptying bucket via N1QL", itemCount)
-		// use n1ql to empty bucket, with the hope that the query service is happier to deal with the rollback.
+		// Use N1QL to empty bucket, with the hope that the query service is happier to deal with this than a bucket flush/rollback.
+		// Requires a primary index on the bucket.
 		res, err := b.Query(`DELETE FROM $_bucket`, nil, gocb.RequestPlus, false)
 		if err != nil {
 			return err
@@ -54,22 +54,19 @@ var ViewsAndGSIBucketReadier base.BucketWorkerFunc = func(ctx context.Context, b
 // ViewsAndGSIBucketInit is run once on a package's start. This is run synchronously per-bucket, so can be used to build GSI indexes safely.
 var ViewsAndGSIBucketInit base.BucketWorkerFunc = func(ctx context.Context, b *base.CouchbaseBucketGoCB, tbp *base.GocbTestBucketPool) error {
 
+	if empty, err := isIndexEmpty(b, base.TestUseXattrs()); empty && err == nil {
+		tbp.Logf(ctx, "indexes already created, and already empty - skipping")
+		return nil
+	}
+
 	tbp.Logf(ctx, "dropping existing bucket indexes")
 	if err := base.DropAllBucketIndexes(b); err != nil {
 		tbp.Logf(ctx, "Failed to drop bucket indexes: %v", err)
 		return err
 	}
 
-	// create a primary index so we can delete all items via n1ql instead of flushing
-	tbp.Logf(ctx, "creating primary index on bucket")
-	res, err := b.Query(`CREATE PRIMARY INDEX on $_bucket`, nil, gocb.RequestPlus, true)
-	if err != nil {
-		return err
-	}
-	_ = res.Close()
-
 	tbp.Logf(ctx, "creating SG bucket indexes")
-	if err := InitializeIndexes(b, base.TestUseXattrs(), 0); err != nil {
+	if err := InitializeIndexes(b, base.TestUseXattrs(), 0, true); err != nil {
 		return err
 	}
 

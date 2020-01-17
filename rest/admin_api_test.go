@@ -1961,7 +1961,7 @@ func TestHandleActiveTasks(t *testing.T) {
 	resp := rt.SendAdminRequest(http.MethodGet, "/_active_tasks", "")
 	assertStatus(t, resp, http.StatusOK)
 	assert.NoError(t, json.Unmarshal([]byte(resp.Body.String()), &tasks))
-	assert.Equal(t, 0, len(tasks))
+	require.Len(t, tasks, 0)
 }
 
 func TestHandleSGCollect(t *testing.T) {
