@@ -16,44 +16,59 @@ import (
 
 // ViewsAndGSIBucketReadier inherits from EmptyBucketReadier, but also initializes Views and GSI indexes. It is run asynchronously as soon as a test is finished with a bucket.
 var ViewsAndGSIBucketReadier base.BucketWorkerFunc = func(ctx context.Context, b *base.CouchbaseBucketGoCB, tbp *base.GocbTestBucketPool) error {
-	err := base.EmptyBucketReadier(ctx, b, tbp)
-	if err != nil {
+
+	tbp.Logf(ctx, "checking if bucket is empty")
+	if itemCount, err := b.QueryBucketItemCount(); err != nil {
 		return err
+	} else if itemCount == 0 {
+		tbp.Logf(ctx, "Bucket already empty - skipping")
+	} else {
+		tbp.Logf(ctx, "Bucket not empty (%d items), emptying bucket via N1QL", itemCount)
+		// use n1ql to empty bucket, with the hope that the query service is happier to deal with the rollback.
+		res, err := b.Query(`DELETE FROM $_bucket`, nil, gocb.RequestPlus, false)
+		if err != nil {
+			return err
+		}
+		_ = res.Close()
 	}
 
-	err = InitializeViews(b)
+	tbp.Logf(ctx, "initializing bucket views")
+	err := InitializeViews(b)
 	if err != nil {
 		return err
 	}
 	tbp.Logf(ctx, "bucket views initialized")
 
+	tbp.Logf(ctx, "waiting for empty bucket indexes")
 	// we can't init indexes concurrently, so we'll just wait for them to be empty after flushing.
 	err = WaitForIndexEmpty(b, base.TestUseXattrs())
 	if err != nil {
 		tbp.Logf(ctx, "WaitForIndexEmpty returned an error: %v", err)
 		return err
 	}
-
 	tbp.Logf(ctx, "bucket indexes empty")
+
 	return nil
 }
 
 // ViewsAndGSIBucketInit is run once on a package's start. This is run synchronously per-bucket, so can be used to build GSI indexes safely.
 var ViewsAndGSIBucketInit base.BucketWorkerFunc = func(ctx context.Context, b *base.CouchbaseBucketGoCB, tbp *base.GocbTestBucketPool) error {
 
-	// If indexes are present and empty already, nothing to do!
-	if ok, _ := isIndexEmpty(b, base.TestUseXattrs()); ok {
-		tbp.Logf(ctx, "indexes already present and empty, skipping setup")
-		return nil
-	}
-
-	tbp.Logf(ctx, "dropping bucket indexes")
+	tbp.Logf(ctx, "dropping existing bucket indexes")
 	if err := base.DropAllBucketIndexes(b); err != nil {
 		tbp.Logf(ctx, "Failed to drop bucket indexes: %v", err)
 		return err
 	}
 
-	tbp.Logf(ctx, "creating bucket indexes")
+	// create a primary index so we can delete all items via n1ql instead of flushing
+	tbp.Logf(ctx, "creating primary index on bucket")
+	res, err := b.Query(`CREATE PRIMARY INDEX on $_bucket`, nil, gocb.RequestPlus, true)
+	if err != nil {
+		return err
+	}
+	_ = res.Close()
+
+	tbp.Logf(ctx, "creating SG bucket indexes")
 	if err := InitializeIndexes(b, base.TestUseXattrs(), 0); err != nil {
 		return err
 	}

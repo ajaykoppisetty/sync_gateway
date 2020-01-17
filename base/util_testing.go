@@ -233,14 +233,14 @@ func DropAllBucketIndexes(gocbBucket *CouchbaseBucketGoCB) error {
 
 			defer wg.Done()
 
-			log.Printf("Dropping index %s...", indexToDrop)
+			log.Printf("Dropping index %s on bucket %s...", indexToDrop, gocbBucket.Name())
 			dropErr := gocbBucket.DropIndex(indexToDrop)
 			if dropErr != nil {
 				asyncErrors <- dropErr
-				log.Printf("...failed to drop index %s", dropErr)
+				log.Printf("...failed to drop index %s on bucket %s: %s", indexToDrop, gocbBucket.Name(), dropErr)
 				return
 			}
-			log.Printf("...successfully dropped index %s", indexToDrop)
+			log.Printf("...successfully dropped index %s on bucket %s", indexToDrop, gocbBucket.Name())
 		}(index)
 
 	}

@@ -356,7 +356,8 @@ func waitForIndexes(bucket *base.CouchbaseBucketGoCB, useXattrs bool) error {
 func waitForIndex(bucket *base.CouchbaseBucketGoCB, indexName string, queryStatement string) error {
 
 	for {
-		_, err := bucket.Query(queryStatement, nil, gocb.RequestPlus, true)
+		r, err := bucket.Query(queryStatement, nil, gocb.RequestPlus, true)
+		defer r.Close()
 		// Retry on timeout error, otherwise return
 		if err == nil {
 			return nil
