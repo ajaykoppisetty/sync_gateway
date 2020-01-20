@@ -2093,7 +2093,7 @@ func TestUserAndRoleResponseContentType(t *testing.T) {
 	assert.Equal(t, http.StatusOK, response.Code)
 	assert.Equal(t, "application/json", response.Header().Get("Content-Type"))
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &responseBody))
-	sessionId := responseBody["session_id"].(string)
+	sessionId, _ := responseBody["session_id"].(string)
 	require.NotEmpty(t, sessionId, "Couldn't parse sessionID from response body")
 
 	// Delete user session using /db/_user/eve/_session/{sessionId}.

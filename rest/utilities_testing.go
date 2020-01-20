@@ -30,8 +30,6 @@ import (
 // are available to any package that imports rest.  (if they were in a _test.go
 // file, they wouldn't be publicly exported to other packages)
 
-var gBucketCounter = 0
-
 type RestTesterConfig struct {
 	noAdminParty          bool      // Unless this is true, Admin Party is in full effect
 	SyncFn                string    // put the sync() function source in here (optional)
@@ -46,6 +44,7 @@ type RestTester struct {
 	*RestTesterConfig
 	tb                      testing.TB
 	testBucket              *base.TestBucket
+	bucketOnce              sync.Once
 	RestTesterServerContext *ServerContext
 	AdminHandler            http.Handler
 	adminHandlerOnce        sync.Once
@@ -67,109 +66,82 @@ func NewRestTester(tb testing.TB, restConfig *RestTesterConfig) *RestTester {
 	return &rt
 }
 
+func (rt *RestTester) WithTestBucket(testBucket *base.TestBucket) {
+	rt.testBucket = testBucket
+}
+
 func (rt *RestTester) Bucket() base.Bucket {
 
 	if rt.tb == nil {
 		panic("RestTester not properly initialized please use NewRestTester function")
 	}
 
-	if rt.testBucket != nil {
-		return rt.testBucket
-	}
+	rt.bucketOnce.Do(func() {
+		if rt.testBucket == nil {
+			testBucket := base.GetTestBucket(rt.tb)
+			rt.WithTestBucket(&testBucket)
+		}
 
-	testBucket := base.GetTestBucket(rt.tb)
-	rt.testBucket = &testBucket
+		var syncFnPtr *string
+		if len(rt.SyncFn) > 0 {
+			syncFnPtr = &rt.SyncFn
+		}
 
-	var syncFnPtr *string
-	if len(rt.SyncFn) > 0 {
-		syncFnPtr = &rt.SyncFn
-	}
+		corsConfig := &CORSConfig{
+			Origin:      []string{"http://example.com", "*", "http://staging.example.com"},
+			LoginOrigin: []string{"http://example.com"},
+			Headers:     []string{},
+			MaxAge:      1728000,
+		}
 
-	corsConfig := &CORSConfig{
-		Origin:      []string{"http://example.com", "*", "http://staging.example.com"},
-		LoginOrigin: []string{"http://example.com"},
-		Headers:     []string{},
-		MaxAge:      1728000,
-	}
+		rt.RestTesterServerContext = NewServerContext(&ServerConfig{
+			CORS:           corsConfig,
+			Facebook:       &FacebookConfig{},
+			AdminInterface: &DefaultAdminInterface,
+		})
 
-	rt.RestTesterServerContext = NewServerContext(&ServerConfig{
-		CORS:           corsConfig,
-		Facebook:       &FacebookConfig{},
-		AdminInterface: &DefaultAdminInterface,
+		useXattrs := base.TestUseXattrs()
+
+		if rt.DatabaseConfig == nil {
+			// If no db config was passed in, create one
+			rt.DatabaseConfig = &DbConfig{}
+		}
+
+		// Force views if running against walrus
+		if !base.TestUseCouchbaseServer() {
+			rt.DatabaseConfig.UseViews = true
+		}
+
+		// numReplicas set to 0 for test buckets, since it should assume that there may only be one indexing node.
+		numReplicas := uint(0)
+		rt.DatabaseConfig.NumIndexReplicas = &numReplicas
+		un, pw, _ := rt.testBucket.BucketSpec.Auth.GetCredentials()
+		rt.DatabaseConfig.BucketConfig = BucketConfig{
+			Server:   &rt.testBucket.BucketSpec.Server,
+			Bucket:   &rt.testBucket.BucketSpec.BucketName,
+			Username: un,
+			Password: pw,
+		}
+		rt.DatabaseConfig.Name = "db"
+		rt.DatabaseConfig.Sync = syncFnPtr
+		rt.DatabaseConfig.EnableXattrs = &useXattrs
+		if rt.EnableNoConflictsMode {
+			boolVal := false
+			rt.DatabaseConfig.AllowConflicts = &boolVal
+		}
+
+		_, err := rt.RestTesterServerContext.AddDatabaseFromConfig(rt.DatabaseConfig)
+		if err != nil {
+			rt.tb.Fatalf("Error from AddDatabaseFromConfig: %v", err)
+		}
+
+		if !rt.noAdminParty {
+			rt.SetAdminParty(true)
+		}
 	})
 
-	useXattrs := base.TestUseXattrs()
-
-	if rt.DatabaseConfig == nil {
-		// If no db config was passed in, create one
-		rt.DatabaseConfig = &DbConfig{}
-	}
-
-	// Force views if running against walrus
-	if !base.TestUseCouchbaseServer() {
-		rt.DatabaseConfig.UseViews = true
-	}
-
-	// numReplicas set to 0 for test buckets, since it should assume that there may only be one indexing node.
-	numReplicas := uint(0)
-	rt.DatabaseConfig.NumIndexReplicas = &numReplicas
-	un, pw, _ := rt.testBucket.BucketSpec.Auth.GetCredentials()
-	rt.DatabaseConfig.BucketConfig = BucketConfig{
-		Server:   &rt.testBucket.BucketSpec.Server,
-		Bucket:   &rt.testBucket.BucketSpec.BucketName,
-		Username: un,
-		Password: pw,
-	}
-	rt.DatabaseConfig.Name = "db"
-	rt.DatabaseConfig.Sync = syncFnPtr
-	rt.DatabaseConfig.EnableXattrs = &useXattrs
-	if rt.EnableNoConflictsMode {
-		boolVal := false
-		rt.DatabaseConfig.AllowConflicts = &boolVal
-	}
-
-	_, err := rt.RestTesterServerContext.AddDatabaseFromConfig(rt.DatabaseConfig)
-	if err != nil {
-		rt.tb.Fatalf("Error from AddDatabaseFromConfig: %v", err)
-		return nil
-	}
-
-	if !rt.noAdminParty {
-		rt.SetAdminParty(true)
-	}
-
-	return testBucket.Bucket
+	return rt.testBucket.Bucket
 }
-
-/*func (rt *RestTester) BucketAllowEmptyPassword() base.Bucket {
-
-	//Create test DB with "AllowEmptyPassword" true
-	server := "walrus:"
-	bucketName := fmt.Sprintf("sync_gateway_test_%d", gBucketCounter)
-	gBucketCounter++
-
-	rt.RestTesterServerContext = NewServerContext(&ServerConfig{
-		CORS:           &CORSConfig{},
-		Facebook:       &FacebookConfig{},
-		AdminInterface: &DefaultAdminInterface,
-	})
-
-	_, err := rt.RestTesterServerContext.AddDatabaseFromConfig(&DbConfig{
-		BucketConfig: BucketConfig{
-			Server: &server,
-			Bucket: &bucketName},
-		Name:               "db",
-		AllowEmptyPassword: true,
-		UseViews:           true, // walrus only supports views
-	})
-
-	if err != nil {
-		rt.tb.Fatalf("Error from AddDatabaseFromConfig: %v", err)
-	}
-	rt.RestTesterBucket = rt.RestTesterServerContext.Database("db").Bucket
-
-	return rt.RestTesterBucket
-}*/
 
 func (rt *RestTester) ServerContext() *ServerContext {
 	rt.Bucket()

@@ -37,12 +37,15 @@ const (
 type bucketName string
 
 type GocbTestBucketPool struct {
+	integrationMode    bool
 	readyBucketPool    chan *CouchbaseBucketGoCB
 	bucketReadierQueue chan bucketName
 	cluster            *gocb.Cluster
 	clusterMgr         *gocb.ClusterManager
 	ctxCancelFunc      context.CancelFunc
 	defaultBucketSpec  BucketSpec
+
+	BucketInitFunc BucketInitFunc
 
 	useGSI bool
 
@@ -84,10 +87,12 @@ func testCluster(server string) *gocb.Cluster {
 	return cluster
 }
 
-type BucketWorkerFunc func(ctx context.Context, b *CouchbaseBucketGoCB, tbp *GocbTestBucketPool) error
+type BucketInitFunc func(ctx context.Context, b Bucket, tbp *GocbTestBucketPool) error
+
+type GocbBucketReadierFunc func(ctx context.Context, b *CouchbaseBucketGoCB, tbp *GocbTestBucketPool) error
 
 // BucketFlushReadier ensures the bucket is empty.
-var BucketFlushReadier BucketWorkerFunc = func(ctx context.Context, b *CouchbaseBucketGoCB, tbp *GocbTestBucketPool) error {
+var BucketFlushReadier GocbBucketReadierFunc = func(ctx context.Context, b *CouchbaseBucketGoCB, tbp *GocbTestBucketPool) error {
 	// Empty bucket
 	if itemCount, err := b.QueryBucketItemCount(); err != nil {
 		return err
@@ -103,8 +108,8 @@ var BucketFlushReadier BucketWorkerFunc = func(ctx context.Context, b *Couchbase
 	return nil
 }
 
-// NoopBucketWorkerFunc does nothing
-var NoopBucketWorkerFunc BucketWorkerFunc = func(ctx context.Context, b *CouchbaseBucketGoCB, tbp *GocbTestBucketPool) error {
+// NoopBucketInitFunc does nothing
+var NoopBucketInitFunc BucketInitFunc = func(ctx context.Context, b Bucket, tbp *GocbTestBucketPool) error {
 	return nil
 }
 
@@ -118,12 +123,21 @@ var defaultBucketSpec = BucketSpec{
 	UseXattrs: TestUseXattrs(),
 }
 
+func tbpEnvVerbose() bool {
+	verbose, _ := strconv.ParseBool(os.Getenv(testEnvVerbose))
+	return verbose
+}
+
 // NewTestBucketPool initializes a new GocbTestBucketPool. To be called from TestMain for packages requiring test buckets.
 // Set useGSI to false to skip index creation for packages that don't require GSI, to speed up bucket readiness.
-func NewTestBucketPool(bucketReadierFunc, bucketInitFunc BucketWorkerFunc) *GocbTestBucketPool {
+func NewTestBucketPool(bucketReadierFunc GocbBucketReadierFunc, bucketInitFunc BucketInitFunc) *GocbTestBucketPool {
 	// We can safely skip setup when we want Walrus buckets to be used. They'll be created on-demand via GetTestBucketAndSpec.
 	if !TestUseCouchbaseServer() {
-		return nil
+		// FIXME: tbp bucket init func for walrus buckets
+		tbp := GocbTestBucketPool{
+			BucketInitFunc: bucketInitFunc,
+		}
+		return &tbp
 	}
 
 	numBuckets := numBuckets()
@@ -135,9 +149,9 @@ func NewTestBucketPool(bucketReadierFunc, bucketInitFunc BucketWorkerFunc) *Gocb
 	ctx, ctxCancelFunc := context.WithCancel(context.Background())
 
 	preserveBuckets, _ := strconv.ParseBool(os.Getenv(testEnvPreserve))
-	verbose, _ := strconv.ParseBool(os.Getenv(testEnvVerbose))
 
 	tbp := GocbTestBucketPool{
+		integrationMode:    true,
 		readyBucketPool:    make(chan *CouchbaseBucketGoCB, numBuckets),
 		bucketReadierQueue: make(chan bucketName, numBuckets),
 		cluster:            cluster,
@@ -145,7 +159,8 @@ func NewTestBucketPool(bucketReadierFunc, bucketInitFunc BucketWorkerFunc) *Gocb
 		ctxCancelFunc:      ctxCancelFunc,
 		defaultBucketSpec:  defaultBucketSpec,
 		preserveBuckets:    preserveBuckets,
-		verbose:            verbose,
+		verbose:            tbpEnvVerbose(),
+		BucketInitFunc:     bucketInitFunc,
 	}
 
 	go tbp.bucketReadierWorker(ctx, bucketReadierFunc)
@@ -158,7 +173,7 @@ func NewTestBucketPool(bucketReadierFunc, bucketInitFunc BucketWorkerFunc) *Gocb
 }
 
 func (tbp *GocbTestBucketPool) Logf(ctx context.Context, format string, args ...interface{}) {
-	if tbp == nil || !tbp.verbose {
+	if !tbpEnvVerbose() {
 		return
 	}
 
@@ -179,7 +194,7 @@ func (tbp *GocbTestBucketPool) GetTestBucketAndSpec(t testing.TB) (b Bucket, s B
 	ctx := testCtx(t)
 
 	// Return a new Walrus bucket when tbp has not been initialized
-	if tbp == nil {
+	if !tbp.integrationMode {
 		if !UnitTestUrlIsWalrus() {
 			tbp.Logf(ctx, "nil TestBucketPool, but not using a Walrus test URL")
 			os.Exit(1)
@@ -188,6 +203,11 @@ func (tbp *GocbTestBucketPool) GetTestBucketAndSpec(t testing.TB) (b Bucket, s B
 		walrusBucket := walrus.NewBucket(testBucketNamePrefix + GenerateRandomID())
 		ctx := bucketCtx(ctx, walrusBucket)
 		tbp.Logf(ctx, "Creating new walrus test bucket")
+
+		err := tbp.BucketInitFunc(ctx, walrusBucket, tbp)
+		if err != nil {
+			panic(err)
+		}
 
 		return walrusBucket, getBucketSpec(bucketName(walrusBucket.GetName())), func() {
 			tbp.Logf(ctx, "Teardown called - Closing walrus test bucket")
@@ -290,7 +310,7 @@ func (tbp *GocbTestBucketPool) removeOldTestBuckets() error {
 }
 
 // creates a new set of integration test buckets and pushes them into the readier queue.
-func (tbp *GocbTestBucketPool) createTestBuckets(numBuckets int, bucketInitFunc BucketWorkerFunc) error {
+func (tbp *GocbTestBucketPool) createTestBuckets(numBuckets int, bucketInitFunc BucketInitFunc) error {
 
 	wg := sync.WaitGroup{}
 
@@ -375,7 +395,7 @@ func (tbp *GocbTestBucketPool) createTestBuckets(numBuckets int, bucketInitFunc 
 // bucketReadierWorker reads a channel of "dirty" buckets (bucketReadierQueue), does something to get them ready, and then puts them back into the pool.
 // The mechanism for getting the bucket ready can vary by package being tested (for instance, a package not requiring views or GSI can use the BucketFlushReadier function)
 // A package requiring views or GSI, will need to pass in the db.ViewsAndGSIBucketReadier function.
-func (tbp *GocbTestBucketPool) bucketReadierWorker(ctx context.Context, bucketReadierFunc BucketWorkerFunc) {
+func (tbp *GocbTestBucketPool) bucketReadierWorker(ctx context.Context, bucketReadierFunc GocbBucketReadierFunc) {
 	tbp.Logf(context.Background(), "Starting bucketReadier")
 
 loop:

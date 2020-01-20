@@ -9,7 +9,6 @@ import (
 	"os"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -43,19 +42,12 @@ type TestBucket struct {
 	closeFn    func()
 }
 
-var openTestBuckets int32
-
 func (tb TestBucket) Close() {
 	tb.closeFn()
-	atomic.AddInt32(&openTestBuckets, -1)
 }
 
 func GetTestBucket(t testing.TB) TestBucket {
-	if atomic.LoadInt32(&openTestBuckets) != 0 {
-		panic("non-zero open test buckets")
-	}
 	bucket, spec, closeFn := TestBucketPool.GetTestBucketAndSpec(t)
-	atomic.AddInt32(&openTestBuckets, 1)
 	return TestBucket{
 		Bucket:     bucket,
 		BucketSpec: spec,
