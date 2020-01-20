@@ -35,7 +35,7 @@ import (
 // Replication Spec: https://github.com/couchbase/couchbase-lite-core/wiki/Replication-Protocol#proposechanges
 func TestBlipPushRevisionInspectChanges(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)()
+	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
 
 	bt, err := NewBlipTester(t)
 	assert.NoError(t, err, "Error creating BlipTester")
