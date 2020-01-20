@@ -247,12 +247,10 @@ func TestUserPasswordValidation(t *testing.T) {
 }
 
 func TestUserAllowEmptyPassword(t *testing.T) {
-	t.Fatalf("Need AllowEmptyPassword for existing RestTester code")
-	// PUT a user
-	rt := NewRestTester(t, nil)
-	defer rt.Close()
 
-	// rt.BucketAllowEmptyPassword()
+	// PUT a user
+	rt := NewRestTester(t, &RestTesterConfig{DatabaseConfig: &DbConfig{AllowEmptyPassword: true}})
+	defer rt.Close()
 
 	response := rt.SendAdminRequest("PUT", "/db/_user/snej", `{"email":"jens@couchbase.com", "password":"letmein", "admin_channels":["foo", "bar"]}`)
 	assertStatus(t, response, 201)

@@ -58,7 +58,7 @@ var ViewsAndGSIBucketInit base.BucketWorkerFunc = func(ctx context.Context, b *b
 		tbp.Logf(ctx, "indexes already created, and already empty - skipping")
 		return nil
 	} else {
-		tbp.Logf(ctx, "indexes not empty - %v %s", empty, err)
+		tbp.Logf(ctx, "indexes not empty - %v %v", empty, err)
 	}
 
 	tbp.Logf(ctx, "flushing bucket before recreating indexes")
