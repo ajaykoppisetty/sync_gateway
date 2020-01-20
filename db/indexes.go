@@ -286,10 +286,13 @@ func InitializeIndexes(bucket base.Bucket, useXattrs bool, numReplicas uint, cre
 
 	if createPrimary {
 		res, err := gocbBucket.Query(`CREATE PRIMARY INDEX ON $_bucket`, nil, gocb.NotBounded, true)
-		if err != nil {
+		if err == base.ErrIndexAlreadyExists {
+			// don't need to do anything
+		} else if err != nil {
 			return err
+		} else {
+			_ = res.Close()
 		}
-		res.Close()
 	}
 
 	// Create any indexes that aren't present

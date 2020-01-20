@@ -12,7 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// FIXME: This is problematic, as it drops all existing indexes, which disrupts the bucket-pooling approach which requires a primary index, as well as the standard SG indexes to be present after the test is done.
 func TestInitializeIndexes(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Index tests require Couchbase Bucket")
@@ -93,7 +92,7 @@ func TestPostUpgradeIndexesSimple(t *testing.T) {
 	log.Printf("removedIndexes: %+v", removedIndexes)
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in setup case")
 
-	err := InitializeIndexes(testBucket, db.UseXattrs(), 0, true)
+	err := InitializeIndexes(testBucket, db.UseXattrs(), 0, false)
 	assert.NoError(t, err)
 
 	// Running w/ opposite xattrs flag should preview removal of the indexes associated with this db context
@@ -111,6 +110,9 @@ func TestPostUpgradeIndexesSimple(t *testing.T) {
 	goassert.Equals(t, len(removedIndexes), 0)
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in post-cleanup no-op")
 
+	// Restore indexes after test
+	err = InitializeIndexes(testBucket, db.UseXattrs(), 0, false)
+	assert.NoError(t, err)
 }
 
 func TestPostUpgradeIndexesVersionChange(t *testing.T) {
@@ -190,6 +192,10 @@ func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 	assert.NoError(t, err)
 	_, err = removeObsoleteDesignDocs(gocbBucket, !db.UseXattrs(), !db.UseViews())
 	assert.NoError(t, err)
+
+	// Restore ddocs after test
+	err = InitializeViews(gocbBucket)
+	assert.NoError(t, err)
 }
 
 func TestRemoveObsoleteIndexOnFail(t *testing.T) {
@@ -239,4 +245,9 @@ func TestRemoveObsoleteIndexOnFail(t *testing.T) {
 	} else {
 		assert.Contains(t, removedIndex, "sg_channels_1")
 	}
+
+	// Restore indexes after test
+	err := InitializeIndexes(testBucket, db.UseXattrs(), 0, false)
+	assert.NoError(t, err)
+
 }
