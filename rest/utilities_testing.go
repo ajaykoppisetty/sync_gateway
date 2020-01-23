@@ -44,7 +44,8 @@ type RestTester struct {
 	*RestTesterConfig
 	tb                      testing.TB
 	testBucket              *base.TestBucket
-	bucketOnce              sync.Once
+	bucketInitOnce          sync.Once
+	bucketDone              base.AtomicBool
 	RestTesterServerContext *ServerContext
 	AdminHandler            http.Handler
 	adminHandlerOnce        sync.Once
@@ -76,7 +77,11 @@ func (rt *RestTester) Bucket() base.Bucket {
 		panic("RestTester not properly initialized please use NewRestTester function")
 	}
 
-	rt.bucketOnce.Do(func() {
+	if rt.bucketDone.IsTrue() {
+		return rt.testBucket.Bucket
+	}
+
+	rt.bucketInitOnce.Do(func() {
 		if rt.testBucket == nil {
 			testBucket := base.GetTestBucket(rt.tb)
 			rt.WithTestBucket(&testBucket)
@@ -134,6 +139,8 @@ func (rt *RestTester) Bucket() base.Bucket {
 		if err != nil {
 			rt.tb.Fatalf("Error from AddDatabaseFromConfig: %v", err)
 		}
+
+		rt.bucketDone.Set(true)
 
 		if !rt.noAdminParty {
 			rt.SetAdminParty(true)

@@ -9,7 +9,10 @@ import (
 
 func TestMain(m *testing.M) {
 	base.TestBucketPool = base.NewTestBucketPool(base.BucketFlushReadier, base.NoopBucketInitFunc)
-	defer base.TestBucketPool.Close()
 
-	os.Exit(m.Run())
+	status := m.Run()
+
+	base.TestBucketPool.Close()
+
+	os.Exit(status)
 }

@@ -10,6 +10,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/couchbase/gocb"
 	"github.com/couchbaselabs/walrus"
@@ -36,6 +37,17 @@ const (
 
 type bucketName string
 
+type bucketPoolStats struct {
+	TotalBucketInitDurationNano    int64
+	TotalBucketInitCount           int32
+	TotalBucketReadierDurationNano int64
+	TotalBucketReadierCount        int32
+	NumBucketsOpened               int32
+	NumBucketsClosed               int32
+	TotalWaitingForReadyBucketNano int64
+	TotalInuseBucketNano           int64
+}
+
 type GocbTestBucketPool struct {
 	integrationMode    bool
 	readyBucketPool    chan *CouchbaseBucketGoCB
@@ -47,6 +59,8 @@ type GocbTestBucketPool struct {
 
 	BucketInitFunc BucketInitFunc
 
+	stats bucketPoolStats
+
 	useGSI bool
 
 	// preserveBuckets can be set to true to prevent removal of a bucket used in a failing test.
@@ -55,7 +69,7 @@ type GocbTestBucketPool struct {
 	preservedBucketCount uint32
 
 	// Enables test pool logging
-	verbose bool
+	verbose AtomicBool
 }
 
 // numBuckets returns the configured number of buckets to use in the pool.
@@ -159,21 +173,24 @@ func NewTestBucketPool(bucketReadierFunc GocbBucketReadierFunc, bucketInitFunc B
 		ctxCancelFunc:      ctxCancelFunc,
 		defaultBucketSpec:  defaultBucketSpec,
 		preserveBuckets:    preserveBuckets,
-		verbose:            tbpEnvVerbose(),
 		BucketInitFunc:     bucketInitFunc,
 	}
+	tbp.verbose.Set(tbpEnvVerbose())
 
 	go tbp.bucketReadierWorker(ctx, bucketReadierFunc)
 
+	start := time.Now()
 	if err := tbp.createTestBuckets(numBuckets, bucketInitFunc); err != nil {
 		log.Fatalf("Couldn't create test buckets: %v", err)
 	}
+	atomic.AddInt32(&tbp.stats.TotalBucketInitCount, int32(numBuckets))
+	atomic.AddInt64(&tbp.stats.TotalBucketInitDurationNano, time.Since(start).Nanoseconds())
 
 	return &tbp
 }
 
 func (tbp *GocbTestBucketPool) Logf(ctx context.Context, format string, args ...interface{}) {
-	if !tbpEnvVerbose() {
+	if tbp != nil && !tbp.verbose.IsTrue() {
 		return
 	}
 
@@ -209,7 +226,11 @@ func (tbp *GocbTestBucketPool) GetTestBucketAndSpec(t testing.TB) (b Bucket, s B
 			panic(err)
 		}
 
+		atomic.AddInt32(&tbp.stats.NumBucketsOpened, 1)
+		start := time.Now()
 		return walrusBucket, getBucketSpec(bucketName(walrusBucket.GetName())), func() {
+			atomic.AddInt32(&tbp.stats.NumBucketsClosed, 1)
+			atomic.AddInt64(&tbp.stats.TotalInuseBucketNano, time.Since(start).Nanoseconds())
 			tbp.Logf(ctx, "Teardown called - Closing walrus test bucket")
 			walrusBucket.Close()
 		}
@@ -222,19 +243,26 @@ func (tbp *GocbTestBucketPool) GetTestBucketAndSpec(t testing.TB) (b Bucket, s B
 	}
 
 	tbp.Logf(ctx, "Attempting to get test bucket from pool")
+	waitingBucketStart := time.Now()
 	gocbBucket := <-tbp.readyBucketPool
+	atomic.AddInt64(&tbp.stats.TotalWaitingForReadyBucketNano, time.Since(waitingBucketStart).Nanoseconds())
 	ctx = bucketCtx(ctx, gocbBucket)
 	tbp.Logf(ctx, "Got test bucket from pool")
 
+	atomic.AddInt32(&tbp.stats.NumBucketsOpened, 1)
+	bucketOpenStart := time.Now()
 	return gocbBucket, getBucketSpec(bucketName(gocbBucket.GetName())), func() {
+		atomic.AddInt32(&tbp.stats.NumBucketsClosed, 1)
+		atomic.AddInt64(&tbp.stats.TotalInuseBucketNano, time.Since(bucketOpenStart).Nanoseconds())
+		tbp.Logf(ctx, "Teardown called - closing bucket")
+		gocbBucket.Close()
+
 		if tbp.preserveBuckets && t.Failed() {
 			tbp.Logf(ctx, "Test using bucket failed. Preserving bucket for later inspection")
 			atomic.AddUint32(&tbp.preservedBucketCount, 1)
 			return
 		}
 
-		tbp.Logf(ctx, "Teardown called - closing bucket")
-		gocbBucket.Close()
 		tbp.Logf(ctx, "Teardown called - Pushing into bucketReadier queue")
 		tbp.bucketReadierQueue <- bucketName(gocbBucket.GetName())
 	}
@@ -267,12 +295,44 @@ func (tbp *GocbTestBucketPool) Close() {
 		return
 	}
 
+	tbp.printStats()
+
 	// Cancel async workers
 	tbp.ctxCancelFunc()
 
 	if err := tbp.cluster.Close(); err != nil {
 		tbp.Logf(context.Background(), "Couldn't close cluster connection: %v", err)
 	}
+}
+
+func (tbp *GocbTestBucketPool) printStats() {
+	origVerbose := tbp.verbose.IsTrue()
+	tbp.verbose.Set(true)
+
+	ctx := context.Background()
+
+	totalBucketInitTime := time.Duration(atomic.LoadInt64(&tbp.stats.TotalBucketInitDurationNano))
+	totalBucketInitCount := time.Duration(atomic.LoadInt32(&tbp.stats.TotalBucketInitCount))
+
+	totalBucketReadierTime := time.Duration(atomic.LoadInt64(&tbp.stats.TotalBucketReadierDurationNano))
+	totalBucketReadierCount := time.Duration(atomic.LoadInt32(&tbp.stats.TotalBucketReadierCount))
+
+	totalBucketWaitTime := time.Duration(atomic.LoadInt64(&tbp.stats.TotalWaitingForReadyBucketNano))
+	numBucketsOpened := time.Duration(atomic.LoadInt32(&tbp.stats.NumBucketsOpened))
+
+	totalBucketUseTime := time.Duration(atomic.LoadInt64(&tbp.stats.TotalInuseBucketNano))
+
+	tbp.Logf(ctx, "==========================")
+	tbp.Logf(ctx, "= Test Bucket Pool Stats =")
+	tbp.Logf(ctx, "==========================")
+	tbp.Logf(ctx, "Total bucket init time: %s for %d buckets (avg: %s)", totalBucketInitTime, totalBucketInitCount, totalBucketInitTime/totalBucketInitCount)
+	tbp.Logf(ctx, "Total bucket readier time: %s for %d buckets (avg: %s)", totalBucketReadierTime, totalBucketReadierCount, totalBucketReadierTime/totalBucketReadierCount)
+	tbp.Logf(ctx, "Total buckets opened/closed: %d/%d", numBucketsOpened, atomic.LoadInt32(&tbp.stats.NumBucketsClosed))
+	tbp.Logf(ctx, "Total time waiting for ready bucket: %s over %d buckets (avg: %s)", totalBucketWaitTime, numBucketsOpened, totalBucketWaitTime/numBucketsOpened)
+	tbp.Logf(ctx, "Total time tests using buckets: %s (avg: %s)", totalBucketUseTime, totalBucketUseTime/numBucketsOpened)
+	tbp.Logf(ctx, "==========================")
+
+	tbp.verbose.Set(origVerbose)
 }
 
 // removes any integration test buckets
@@ -406,10 +466,12 @@ loop:
 			break loop
 
 		case testBucketName := <-tbp.bucketReadierQueue:
+			atomic.AddInt32(&tbp.stats.TotalBucketReadierCount, 1)
 			ctx := bucketNameCtx(ctx, string(testBucketName))
 			tbp.Logf(ctx, "bucketReadier got bucket")
 
 			go func(testBucketName bucketName) {
+				start := time.Now()
 				b, err := tbp.openTestBucket(testBucketName, CreateSleeperFunc(5, 1000))
 				if err != nil {
 					panic(err)
@@ -423,6 +485,8 @@ loop:
 
 				tbp.Logf(ctx, "Bucket ready, putting back into ready pool")
 				tbp.readyBucketPool <- b
+				atomic.AddInt64(&tbp.stats.TotalBucketReadierDurationNano, time.Since(start).Nanoseconds())
+
 			}(testBucketName)
 		}
 	}

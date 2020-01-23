@@ -9,7 +9,10 @@ import (
 
 func TestMain(m *testing.M) {
 	base.TestBucketPool = base.NewTestBucketPool(ViewsAndGSIBucketReadier, ViewsAndGSIBucketInit)
-	defer base.TestBucketPool.Close()
 
-	os.Exit(m.Run())
+	status := m.Run()
+
+	base.TestBucketPool.Close()
+
+	os.Exit(status)
 }
