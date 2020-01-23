@@ -89,7 +89,16 @@ func numBuckets() int {
 }
 
 func testCluster(server string) *gocb.Cluster {
-	cluster, err := gocb.Connect(server)
+	spec := BucketSpec{
+		Server: server,
+	}
+
+	connStr, err := spec.GetGoCBConnString()
+	if err != nil {
+		log.Fatalf("error getting connection string: %v", err)
+	}
+
+	cluster, err := gocb.Connect(connStr)
 	if err != nil {
 		log.Fatalf("Couldn't connect to %q: %v", server, err)
 	}
@@ -101,6 +110,7 @@ func testCluster(server string) *gocb.Cluster {
 	if err != nil {
 		log.Fatalf("Couldn't authenticate with %q: %v", server, err)
 	}
+
 	return cluster
 }
 
@@ -445,9 +455,6 @@ func (tbp *GocbTestBucketPool) createTestBuckets(numBuckets int, bucketInitFunc 
 					tbp.Logf(ctx, "Couldn't create test bucket: %v", err)
 					os.Exit(1)
 				}
-
-				// Have an initial wait for bucket creation before the OpenBucket retry starts
-				// time.Sleep(time.Second * 2 * time.Duration(numBuckets))
 			}
 
 			b, err := tbp.openTestBucket(bucketName(testBucketName), CreateSleeperFunc(5*numBuckets, 1000))
@@ -534,7 +541,7 @@ func (tbp *GocbTestBucketPool) openTestBucket(testBucketName bucketName, sleeper
 	bucketSpec.BucketName = string(testBucketName)
 
 	waitForNewBucketWorker := func() (shouldRetry bool, err error, value interface{}) {
-		gocbBucket, err := GetCouchbaseBucketGoCB(bucketSpec)
+		gocbBucket, err := GetCouchbaseBucketGoCBFromCluster(tbp.cluster, bucketSpec)
 		if err != nil {
 			tbp.Logf(ctx, "Retrying OpenBucket")
 			return true, err, nil

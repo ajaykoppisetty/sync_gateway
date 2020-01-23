@@ -109,8 +109,6 @@ var ViewsAndGSIBucketInit base.BucketInitFunc = func(ctx context.Context, b base
 }
 
 func isIndexEmpty(bucket *base.CouchbaseBucketGoCB, useXattrs bool) (bool, error) {
-	var results gocb.QueryResults
-
 	// Create the star channel query
 	statement := fmt.Sprintf("%s LIMIT 1", QueryStarChannel.statement) // append LIMIT 1 since we only care if there are any results or not
 	starChannelQueryStatement := replaceSyncTokensQuery(statement, useXattrs)

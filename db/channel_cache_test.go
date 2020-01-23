@@ -34,8 +34,6 @@ func TestChannelCacheMaxSize(t *testing.T) {
 	context, err := NewDatabaseContext("db", testBucket.Bucket, false, DatabaseContextOptions{})
 	require.NoError(t, err)
 	defer context.Close()
-	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
-
 	cache := context.changeCache.getChannelCache()
 
 	// Make channels active

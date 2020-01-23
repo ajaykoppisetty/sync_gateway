@@ -189,7 +189,6 @@ func TestLateSequenceHandlingWithMultipleListeners(t *testing.T) {
 	context, err := NewDatabaseContext("db", b.Bucket, false, DatabaseContextOptions{})
 	require.NoError(t, err)
 	defer context.Close()
-	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
 	cache := newSingleChannelCache(context, "Test1", 0, &expvar.Map{})
 	goassert.True(t, cache != nil)
 
@@ -2034,7 +2033,6 @@ func BenchmarkProcessEntry(b *testing.B) {
 				_ = changeCache.processEntry(entry)
 			}
 
-			base.DecrNumOpenBuckets(context.Bucket.GetName())
 			context.Close()
 		})
 	}
@@ -2264,7 +2262,6 @@ func BenchmarkDocChanged(b *testing.B) {
 			//log.Printf("maxNumPending: %v", changeCache.context.DbStats.StatsCblReplicationPull().Get(base.StatKeyMaxPending))
 			//log.Printf("cachingCount: %v", changeCache.context.DbStats.StatsDatabase().Get(base.StatKeyDcpCachingCount))
 
-			base.DecrNumOpenBuckets(context.Bucket.GetName())
 			context.Close()
 		})
 	}
