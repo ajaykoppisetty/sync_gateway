@@ -31,13 +31,14 @@ import (
 // file, they wouldn't be publicly exported to other packages)
 
 type RestTesterConfig struct {
-	noAdminParty          bool      // Unless this is true, Admin Party is in full effect
-	SyncFn                string    // put the sync() function source in here (optional)
-	DatabaseConfig        *DbConfig // Supports additional config options.  BucketConfig, Name, Sync, Unsupported will be ignored (overridden)
-	NoFlush               bool      // Skip bucket flush step during creation.  Used by tests that need to simulate start/stop of Sync Gateway with backing bucket intact.
-	InitSyncSeq           uint64    // If specified, initializes _sync:seq on bucket creation.  Not supported when running against walrus
-	EnableNoConflictsMode bool      // Enable no-conflicts mode.  By default, conflicts will be allowed, which is the default behavior
-	distributedIndex      bool      // Test with walrus-based index bucket
+	noAdminParty   bool      // Unless this is true, Admin Party is in full effect
+	SyncFn         string    // put the sync() function source in here (optional)
+	DatabaseConfig *DbConfig // Supports additional config options.  BucketConfig, Name, Sync, Unsupported will be ignored (overridden)
+	// FIXME: NoFlush no longer used
+	NoFlush               bool   // Skip bucket flush step during creation.  Used by tests that need to simulate start/stop of Sync Gateway with backing bucket intact.
+	InitSyncSeq           uint64 // If specified, initializes _sync:seq on bucket creation.  Not supported when running against walrus
+	EnableNoConflictsMode bool   // Enable no-conflicts mode.  By default, conflicts will be allowed, which is the default behavior
+	distributedIndex      bool   // Test with walrus-based index bucket
 }
 
 type RestTester struct {
@@ -82,9 +83,15 @@ func (rt *RestTester) Bucket() base.Bucket {
 	}
 
 	rt.bucketInitOnce.Do(func() {
-		if rt.testBucket == nil {
-			testBucket := base.GetTestBucket(rt.tb)
-			rt.WithTestBucket(&testBucket)
+		testBucket := base.GetTestBucket(rt.tb)
+		rt.WithTestBucket(&testBucket)
+
+		if rt.InitSyncSeq > 0 {
+			log.Printf("Initializing %s to %d", base.SyncSeqKey, rt.InitSyncSeq)
+			_, incrErr := testBucket.Incr(base.SyncSeqKey, rt.InitSyncSeq, rt.InitSyncSeq, 0)
+			if incrErr != nil {
+				rt.tb.Fatalf("Error initializing %s in test bucket: %v", base.SyncSeqKey, incrErr)
+			}
 		}
 
 		var syncFnPtr *string
