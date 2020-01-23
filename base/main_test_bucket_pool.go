@@ -31,6 +31,9 @@ const (
 	// When all pooled buckets are in a preserved state, any remaining tests are skipped.
 	testEnvPreserve = "SG_TEST_BUCKET_POOL_PRESERVE"
 
+	// When set to true, first, all existing test buckets are removed, before creating new ones.
+	testEnvRecreate = "SG_TEST_BACKING_STORE_RECREATE"
+
 	// Prints detailed logs from the test pooling framework.
 	testEnvVerbose = "SG_TEST_BUCKET_POOL_DEBUG"
 )
@@ -178,6 +181,14 @@ func NewTestBucketPool(bucketReadierFunc GocbBucketReadierFunc, bucketInitFunc B
 	tbp.verbose.Set(tbpEnvVerbose())
 
 	go tbp.bucketReadierWorker(ctx, bucketReadierFunc)
+
+	removeOldBuckets, _ := strconv.ParseBool(os.Getenv(testEnvRecreate))
+	if removeOldBuckets {
+		err := tbp.removeOldTestBuckets()
+		if err != nil {
+			log.Fatalf("Couldn't remove old test buckets: %v", err)
+		}
+	}
 
 	start := time.Now()
 	if err := tbp.createTestBuckets(numBuckets, bucketInitFunc); err != nil {
