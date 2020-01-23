@@ -111,7 +111,7 @@ type GocbBucketReadierFunc func(ctx context.Context, b *CouchbaseBucketGoCB, tbp
 // BucketFlushReadier ensures the bucket is empty.
 var BucketFlushReadier GocbBucketReadierFunc = func(ctx context.Context, b *CouchbaseBucketGoCB, tbp *GocbTestBucketPool) error {
 	// Empty bucket
-	if itemCount, err := b.QueryBucketItemCount(); err != nil {
+	if itemCount, err := b.BucketItemCount(); err != nil {
 		return err
 	} else if itemCount == 0 {
 		tbp.Logf(ctx, "Bucket already empty - skipping flush")

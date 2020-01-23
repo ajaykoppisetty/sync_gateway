@@ -284,17 +284,6 @@ func InitializeIndexes(bucket base.Bucket, useXattrs bool, numReplicas uint, cre
 
 	base.Infof(base.KeyAll, "Initializing indexes with numReplicas: %d...", numReplicas)
 
-	if createPrimary {
-		res, err := gocbBucket.Query(`CREATE PRIMARY INDEX ON $_bucket`, nil, gocb.NotBounded, true)
-		if err == base.ErrIndexAlreadyExists {
-			// don't need to do anything
-		} else if err != nil {
-			return err
-		} else {
-			_ = res.Close()
-		}
-	}
-
 	// Create any indexes that aren't present
 	deferredIndexes := make([]string, 0)
 	allSGIndexes := make([]string, 0)
@@ -309,6 +298,19 @@ func InitializeIndexes(bucket base.Bucket, useXattrs bool, numReplicas uint, cre
 			deferredIndexes = append(deferredIndexes, fullIndexName)
 		}
 		allSGIndexes = append(allSGIndexes, fullIndexName)
+	}
+
+	if createPrimary {
+		const primaryIndexName = "#primary"
+		err := gocbBucket.CreatePrimaryIndex(primaryIndexName, &base.N1qlIndexOptions{
+			NumReplica: 0,
+			DeferBuild: true,
+		})
+		if err == nil {
+			deferredIndexes = append(deferredIndexes, primaryIndexName)
+		} else if err != base.ErrIndexAlreadyExists {
+			return err
+		}
 	}
 
 	// Issue BUILD INDEX for any deferred indexes.
@@ -368,9 +370,9 @@ func waitForIndex(bucket *base.CouchbaseBucketGoCB, indexName string, queryState
 
 	for {
 		r, err := bucket.Query(queryStatement, nil, gocb.RequestPlus, true)
-		defer r.Close()
 		// Retry on timeout error, otherwise return
 		if err == nil {
+			_ = r.Close()
 			return nil
 		}
 		if err == base.ErrViewTimeoutError {

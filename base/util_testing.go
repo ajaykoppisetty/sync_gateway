@@ -301,7 +301,7 @@ func (tbm *TestBucketManager) FlushBucket() error {
 	numTries := 0
 	for {
 
-		itemCount, err := tbm.Bucket.QueryBucketItemCount()
+		itemCount, err := tbm.Bucket.BucketItemCount()
 		if err != nil {
 			return err
 		}

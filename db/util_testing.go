@@ -50,7 +50,7 @@ var ViewsAndGSIBucketReadier base.GocbBucketReadierFunc = func(ctx context.Conte
 	}
 
 	tbp.Logf(ctx, "waiting for empty bucket indexes")
-	// we can't init indexes concurrently, so we'll just wait for them to be empty after flushing.
+	// we can't init indexes concurrently, so we'll just wait for them to be empty after emptying instead of recreating.
 	err = WaitForIndexEmpty(b, base.TestUseXattrs())
 	if err != nil {
 		tbp.Logf(ctx, "WaitForIndexEmpty returned an error: %v", err)
@@ -78,12 +78,7 @@ var ViewsAndGSIBucketInit base.BucketInitFunc = func(ctx context.Context, b base
 		tbp.Logf(ctx, "indexes already created, and already empty - skipping")
 		return nil
 	} else {
-		tbp.Logf(ctx, "indexes not empty - %v %v", empty, err)
-	}
-
-	tbp.Logf(ctx, "flushing bucket before recreating indexes")
-	if err := gocbBucket.Flush(); err != nil {
-		return err
+		tbp.Logf(ctx, "indexes not empty (or doesn't exist) - %v %v", empty, err)
 	}
 
 	tbp.Logf(ctx, "dropping existing bucket indexes")

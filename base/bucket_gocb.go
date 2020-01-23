@@ -2314,7 +2314,7 @@ func (bucket *CouchbaseBucketGoCB) Flush() error {
 
 	// Wait until the bucket item count is 0, since flush is asynchronous
 	worker := func() (shouldRetry bool, err error, value interface{}) {
-		itemCount, err := bucket.QueryBucketItemCount()
+		itemCount, err := bucket.BucketItemCount()
 		if err != nil {
 			return false, err, nil
 		}
@@ -2337,6 +2337,51 @@ func (bucket *CouchbaseBucketGoCB) Flush() error {
 
 	return nil
 
+}
+
+// BucketItemCount first tries to retrieve an accurate bucket count via N1QL,
+// but falls back to the REST API if that cannot be done (when there's no index to count all items in a bucket)
+func (bucket *CouchbaseBucketGoCB) BucketItemCount() (itemCount int, err error) {
+	itemCount, err = bucket.QueryBucketItemCount()
+	if err == nil {
+		return itemCount, nil
+	}
+
+	itemCount, err = bucket.APIBucketItemCount()
+	return itemCount, err
+}
+
+// Get the number of items in the bucket.
+// GOCB doesn't currently offer a way to do this, and so this is a workaround to go directly
+// to Couchbase Server REST API.
+func (bucket *CouchbaseBucketGoCB) APIBucketItemCount() (itemCount int, err error) {
+	uri := fmt.Sprintf("/pools/default/buckets/%s", bucket.Name())
+	resp, err := bucket.mgmtRequest(http.MethodGet, uri, "application/json", nil)
+	if err != nil {
+		return -1, err
+	}
+
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != 200 {
+		_, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return -1, err
+		}
+		return -1, pkgerrors.Wrapf(err, "Error trying to find number of items in bucket")
+	}
+
+	respJson := map[string]interface{}{}
+	decoder := JSONDecoder(resp.Body)
+	if err := decoder.Decode(&respJson); err != nil {
+		return -1, err
+	}
+
+	basicStats := respJson["basicStats"].(map[string]interface{})
+	itemCountRaw := basicStats["itemCount"]
+	itemCountFloat := itemCountRaw.(float64)
+
+	return int(itemCountFloat), nil
 }
 
 // QueryBucketItemCount uses a request plus query to get the number of items in a bucket, as the REST API can be slow to update its value.
