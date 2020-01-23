@@ -14,10 +14,23 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// Installs views into the given bucket.
+// Removes any existing views and installs a new set into the given bucket.
 func viewBucketReadier(ctx context.Context, b base.Bucket, tbp *base.GocbTestBucketPool) error {
+	var ddocs map[string]interface{}
+	err := b.GetDDocs(&ddocs)
+	if err != nil {
+		return err
+	}
+
+	for ddocName, _ := range ddocs {
+		tbp.Logf(ctx, "removing existing view: %s", ddocName)
+		if err := b.DeleteDDoc(ddocName); err != nil {
+			return err
+		}
+	}
+
 	tbp.Logf(ctx, "initializing bucket views")
-	err := InitializeViews(b)
+	err = InitializeViews(b)
 	if err != nil {
 		return err
 	}

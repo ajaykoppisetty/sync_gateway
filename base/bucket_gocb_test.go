@@ -203,13 +203,13 @@ func TestBulkGetRaw(t *testing.T) {
 
 	results, err := bucket.GetBulkRaw(keySet)
 	assert.NoError(t, err, fmt.Sprintf("Error calling GetBulkRaw(): %v", err))
-	goassert.True(t, len(results) == 1000)
+	assert.Len(t, results, 1000)
 
 	// validate results, and prepare new keySet with non-existent keys
 	mixedKeySet := make([]string, 2000)
 	for index, key := range keySet {
 		// Verify value
-		goassert.True(t, bytes.Equal(results[key], valueSet[key]))
+		assert.Equal(t, results[key], valueSet[key])
 		mixedKeySet[2*index] = key
 		mixedKeySet[2*index+1] = fmt.Sprintf("%s_invalid", key)
 	}
@@ -217,11 +217,11 @@ func TestBulkGetRaw(t *testing.T) {
 	// Validate bulkGet that include non-existent keys work as expected
 	mixedResults, err := bucket.GetBulkRaw(mixedKeySet)
 	assert.NoError(t, err, fmt.Sprintf("Error calling GetBulkRaw(): %v", err))
-	goassert.True(t, len(results) == 1000)
+	assert.Len(t, results, 1000)
 
 	for _, key := range keySet {
 		// validate mixed results
-		goassert.True(t, bytes.Equal(mixedResults[key], valueSet[key]))
+		assert.Equal(t, mixedResults[key], valueSet[key])
 	}
 
 	// if passed all non-existent keys, should return an empty map
@@ -231,8 +231,8 @@ func TestBulkGetRaw(t *testing.T) {
 	}
 	emptyResults, err := bucket.GetBulkRaw(nonExistentKeySet)
 	assert.NoError(t, err, fmt.Sprintf("Unexpected error calling GetBulkRaw(): %v", err))
-	goassert.False(t, emptyResults == nil)
-	goassert.True(t, len(emptyResults) == 0)
+	assert.Nil(t, emptyResults)
+	assert.Len(t, emptyResults, 0)
 
 }
 

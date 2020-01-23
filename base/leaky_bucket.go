@@ -153,6 +153,9 @@ func (b *LeakyBucket) Incr(k string, amt, def uint64, exp uint32) (uint64, error
 	return val, err
 }
 
+func (b *LeakyBucket) GetDDocs(value interface{}) error {
+	return b.bucket.GetDDocs(value)
+}
 func (b *LeakyBucket) GetDDoc(docname string, value interface{}) error {
 	if b.config.DDocGetErrorCount > 0 {
 		b.config.DDocGetErrorCount--

@@ -1779,6 +1779,35 @@ func (bucket *CouchbaseBucketGoCB) Incr(k string, amt, def uint64, exp uint32) (
 
 }
 
+func (bucket *CouchbaseBucketGoCB) GetDDocs(into interface{}) error {
+	bucketManager, err := bucket.getBucketManager()
+	if err != nil {
+		return err
+	}
+
+	ddocs, err := bucketManager.GetDesignDocuments()
+	if err != nil {
+		return err
+	}
+
+	result := make(map[string]*gocb.DesignDocument, len(ddocs))
+	for _, ddoc := range ddocs {
+		result[ddoc.Name] = ddoc
+	}
+
+	resultBytes, err := JSONMarshal(result)
+	if err != nil {
+		return err
+	}
+
+	// Deserialize []byte into "into" empty interface
+	if err := JSONUnmarshal(resultBytes, into); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (bucket *CouchbaseBucketGoCB) GetDDoc(docname string, into interface{}) error {
 
 	bucketManager, err := bucket.getBucketManager()

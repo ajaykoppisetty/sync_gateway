@@ -567,8 +567,7 @@ func TestLoggingCombined(t *testing.T) {
 }
 
 func TestGetStatus(t *testing.T) {
-	rtConfig := RestTesterConfig{NoFlush: true}
-	rt := NewRestTester(t, &rtConfig)
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	response := rt.SendRequest("GET", "/_status", "")
@@ -957,7 +956,6 @@ func TestFlush(t *testing.T) {
 func TestDBOfflineSingle(t *testing.T) {
 
 	rt := NewRestTester(t, nil)
-	rt.NoFlush = true // No need to flush since this test doesn't add any data to the bucket
 	defer rt.Close()
 
 	log.Printf("Taking DB offline")
@@ -980,7 +978,6 @@ func TestDBOfflineSingle(t *testing.T) {
 func TestDBOfflineConcurrent(t *testing.T) {
 
 	rt := NewRestTester(t, nil)
-	rt.NoFlush = true // No need to flush since this test doesn't add any data to the bucket
 	defer rt.Close()
 
 	log.Printf("Taking DB offline")
@@ -1023,8 +1020,8 @@ func TestDBOfflineConcurrent(t *testing.T) {
 func TestStartDBOffline(t *testing.T) {
 
 	rt := NewRestTester(t, nil)
-	rt.NoFlush = true // No need to flush since this test doesn't add any data to the bucket
 	defer rt.Close()
+
 	log.Printf("Taking DB offline")
 	response := rt.SendAdminRequest("GET", "/db/", "")
 	var body db.Body
@@ -1044,7 +1041,6 @@ func TestStartDBOffline(t *testing.T) {
 func TestDBOffline503Response(t *testing.T) {
 
 	rt := NewRestTester(t, nil)
-	rt.NoFlush = true // No need to flush since this test doesn't add any data to the bucket
 	defer rt.Close()
 
 	log.Printf("Taking DB offline")
@@ -1068,7 +1064,6 @@ func TestDBOffline503Response(t *testing.T) {
 func TestDBOfflinePutDbConfig(t *testing.T) {
 
 	rt := NewRestTester(t, nil)
-	rt.NoFlush = true // No need to flush since this test doesn't add any data to the bucket
 	defer rt.Close()
 
 	log.Printf("Taking DB offline")
@@ -1093,7 +1088,6 @@ func TestDBOfflinePutDbConfig(t *testing.T) {
 func TestDBGetConfigNames(t *testing.T) {
 
 	rt := NewRestTester(t, nil)
-	rt.NoFlush = true // No need to flush since this test doesn't add any data to the bucket
 	defer rt.Close()
 
 	p := "password"
@@ -1125,7 +1119,6 @@ func TestDBOfflinePostResync(t *testing.T) {
 	}
 
 	rt := NewRestTester(t, nil)
-	rt.NoFlush = true // No need to flush since this test doesn't add any data to the bucket
 	defer rt.Close()
 
 	log.Printf("Taking DB offline")
@@ -1206,7 +1199,6 @@ func TestDBOfflineSingleResync(t *testing.T) {
 func TestDBOnlineSingle(t *testing.T) {
 
 	rt := NewRestTester(t, nil)
-	rt.NoFlush = true // No need to flush since this test doesn't add any data to the bucket
 	defer rt.Close()
 
 	log.Printf("Taking DB offline")
@@ -1240,7 +1232,6 @@ func TestDBOnlineSingle(t *testing.T) {
 func TestDBOnlineConcurrent(t *testing.T) {
 
 	rt := NewRestTester(t, nil)
-	rt.NoFlush = true // No need to flush since this test doesn't add any data to the bucket
 	defer rt.Close()
 
 	log.Printf("Taking DB offline")
@@ -1293,7 +1284,6 @@ func TestSingleDBOnlineWithDelay(t *testing.T) {
 	}
 
 	rt := NewRestTester(t, nil)
-	rt.NoFlush = true // No need to flush since this test doesn't add any data to the bucket
 	defer rt.Close()
 
 	log.Printf("Taking DB offline")
@@ -1338,7 +1328,6 @@ func TestDBOnlineWithDelayAndImmediate(t *testing.T) {
 	}
 
 	rt := NewRestTester(t, nil)
-	rt.NoFlush = true // No need to flush since this test doesn't add any data to the bucket
 	defer rt.Close()
 
 	log.Printf("Taking DB offline")
@@ -1392,7 +1381,6 @@ func TestDBOnlineWithTwoDelays(t *testing.T) {
 	}
 
 	rt := NewRestTester(t, nil)
-	rt.NoFlush = true // No need to flush since this test doesn't add any data to the bucket
 	defer rt.Close()
 
 	response := rt.SendAdminRequest("GET", "/db/", "")
