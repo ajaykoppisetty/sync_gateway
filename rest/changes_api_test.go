@@ -71,10 +71,8 @@ func TestReproduce2383(t *testing.T) {
 		Last_Seq interface{}
 	}
 
-	rtBucket, ok := rt.Bucket().(*base.LeakyBucket)
-	assert.True(t, ok, "Bucket was not of type LeakyBucket")
 	// Force a partial error for the first ViewCustom call we make to initialize an invalid cache.
-	rtBucket.SetFirstTimeViewCustomPartialError(true)
+	leakyBucket.SetFirstTimeViewCustomPartialError(true)
 
 	changes.Results = nil
 	changesResponse := rt.Send(requestByUser("POST", "/db/_changes?filter=sync_gateway/bychannel&channels=PBS", "{}", "ben"))
@@ -2280,8 +2278,6 @@ func TestChangesViewBackfillSlowQuery(t *testing.T) {
 
 	// Set up PostQueryCallback on bucket - will be invoked when changes triggers the cache backfill view query
 
-	rtBucket, ok := rt.Bucket().(*base.LeakyBucket)
-	assert.True(t, ok, "Bucket was not of type LeakyBucket")
 	postQueryCallback := func(ddoc, viewName string, params map[string]interface{}) {
 		log.Printf("Got callback for %s, %s, %v", ddoc, viewName, params)
 		// Check which channel the callback was invoked for
@@ -2301,7 +2297,7 @@ func TestChangesViewBackfillSlowQuery(t *testing.T) {
 		}
 
 	}
-	rtBucket.SetPostQueryCallback(postQueryCallback)
+	leakyBucket.SetPostQueryCallback(postQueryCallback)
 
 	// Issue a since=0 changes request.  Will cause the following:
 	//   1. Retrieves doc2 from the cache
@@ -2326,7 +2322,7 @@ func TestChangesViewBackfillSlowQuery(t *testing.T) {
 	queryCount := base.GetExpvarAsString("syncGateway_changeCache", "view_queries")
 	log.Printf("After initial changes request, query count is :%s", queryCount)
 
-	rtBucket.SetPostQueryCallback(nil)
+	leakyBucket.SetPostQueryCallback(nil)
 
 	// Issue another since=0 changes request - cache SHOULD only have a single rev for doc1
 	changes.Results = nil

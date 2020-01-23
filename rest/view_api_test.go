@@ -554,6 +554,8 @@ func TestAdminGroupLevelReduceSumQuery(t *testing.T) {
 }
 
 func TestPostInstallCleanup(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+
 	rtConfig := RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel)}`}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
@@ -585,7 +587,7 @@ func TestPostInstallCleanup(t *testing.T) {
 	assertStatus(t, response, http.StatusOK)
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &postUpgradeResponse), "Error unmarshalling post_upgrade response")
 	assert.True(t, postUpgradeResponse.Preview)
-	require.Len(t, postUpgradeResponse.Result["db"].RemovedDDocs, 2)
+	require.Lenf(t, postUpgradeResponse.Result["db"].RemovedDDocs, 2, "Response: %#v", postUpgradeResponse)
 
 	// Run post-upgrade in non-preview mode
 	postUpgradeResponse = PostUpgradeResponse{}

@@ -54,7 +54,7 @@ type LeakyBucketConfig struct {
 	IncrCallback func()
 }
 
-func NewLeakyBucket(bucket Bucket, config LeakyBucketConfig) Bucket {
+func NewLeakyBucket(bucket Bucket, config LeakyBucketConfig) *LeakyBucket {
 	return &LeakyBucket{
 		bucket: bucket,
 		config: config,

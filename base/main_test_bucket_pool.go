@@ -154,6 +154,7 @@ func NewTestBucketPool(bucketReadierFunc GocbBucketReadierFunc, bucketInitFunc B
 		tbp := GocbTestBucketPool{
 			BucketInitFunc: bucketInitFunc,
 		}
+		tbp.verbose.Set(tbpEnvVerbose())
 		return &tbp
 	}
 
@@ -232,16 +233,19 @@ func (tbp *GocbTestBucketPool) GetTestBucketAndSpec(t testing.TB) (b Bucket, s B
 		ctx := bucketCtx(ctx, walrusBucket)
 		tbp.Logf(ctx, "Creating new walrus test bucket")
 
+		initFuncStart := time.Now()
 		err := tbp.BucketInitFunc(ctx, walrusBucket, tbp)
 		if err != nil {
 			panic(err)
 		}
+		atomic.AddInt32(&tbp.stats.TotalBucketInitCount, 1)
+		atomic.AddInt64(&tbp.stats.TotalBucketInitDurationNano, time.Since(initFuncStart).Nanoseconds())
 
 		atomic.AddInt32(&tbp.stats.NumBucketsOpened, 1)
-		start := time.Now()
+		openedStart := time.Now()
 		return walrusBucket, getBucketSpec(bucketName(walrusBucket.GetName())), func() {
 			atomic.AddInt32(&tbp.stats.NumBucketsClosed, 1)
-			atomic.AddInt64(&tbp.stats.TotalInuseBucketNano, time.Since(start).Nanoseconds())
+			atomic.AddInt64(&tbp.stats.TotalInuseBucketNano, time.Since(openedStart).Nanoseconds())
 			tbp.Logf(ctx, "Teardown called - Closing walrus test bucket")
 			walrusBucket.Close()
 		}
@@ -309,10 +313,14 @@ func (tbp *GocbTestBucketPool) Close() {
 	tbp.printStats()
 
 	// Cancel async workers
-	tbp.ctxCancelFunc()
+	if tbp.ctxCancelFunc != nil {
+		tbp.ctxCancelFunc()
+	}
 
-	if err := tbp.cluster.Close(); err != nil {
-		tbp.Logf(context.Background(), "Couldn't close cluster connection: %v", err)
+	if tbp.cluster != nil {
+		if err := tbp.cluster.Close(); err != nil {
+			tbp.Logf(context.Background(), "Couldn't close cluster connection: %v", err)
+		}
 	}
 }
 
@@ -336,11 +344,24 @@ func (tbp *GocbTestBucketPool) printStats() {
 	tbp.Logf(ctx, "==========================")
 	tbp.Logf(ctx, "= Test Bucket Pool Stats =")
 	tbp.Logf(ctx, "==========================")
-	tbp.Logf(ctx, "Total bucket init time: %s for %d buckets (avg: %s)", totalBucketInitTime, totalBucketInitCount, totalBucketInitTime/totalBucketInitCount)
-	tbp.Logf(ctx, "Total bucket readier time: %s for %d buckets (avg: %s)", totalBucketReadierTime, totalBucketReadierCount, totalBucketReadierTime/totalBucketReadierCount)
+	if totalBucketInitCount > 0 {
+		tbp.Logf(ctx, "Total bucket init time: %s for %d buckets (avg: %s)", totalBucketInitTime, totalBucketInitCount, totalBucketInitTime/totalBucketInitCount)
+	} else {
+		tbp.Logf(ctx, "Total bucket init time: %s for %d buckets", totalBucketInitTime, totalBucketInitCount)
+	}
+	if totalBucketReadierCount > 0 {
+		tbp.Logf(ctx, "Total bucket readier time: %s for %d buckets (avg: %s)", totalBucketReadierTime, totalBucketReadierCount, totalBucketReadierTime/totalBucketReadierCount)
+	} else {
+		tbp.Logf(ctx, "Total bucket readier time: %s for %d buckets", totalBucketReadierTime, totalBucketReadierCount)
+	}
 	tbp.Logf(ctx, "Total buckets opened/closed: %d/%d", numBucketsOpened, atomic.LoadInt32(&tbp.stats.NumBucketsClosed))
-	tbp.Logf(ctx, "Total time waiting for ready bucket: %s over %d buckets (avg: %s)", totalBucketWaitTime, numBucketsOpened, totalBucketWaitTime/numBucketsOpened)
-	tbp.Logf(ctx, "Total time tests using buckets: %s (avg: %s)", totalBucketUseTime, totalBucketUseTime/numBucketsOpened)
+	if numBucketsOpened > 0 {
+		tbp.Logf(ctx, "Total time waiting for ready bucket: %s over %d buckets (avg: %s)", totalBucketWaitTime, numBucketsOpened, totalBucketWaitTime/numBucketsOpened)
+		tbp.Logf(ctx, "Total time tests using buckets: %s (avg: %s)", totalBucketUseTime, totalBucketUseTime/numBucketsOpened)
+	} else {
+		tbp.Logf(ctx, "Total time waiting for ready bucket: %s over %d buckets", totalBucketWaitTime, numBucketsOpened)
+		tbp.Logf(ctx, "Total time tests using buckets: %s", totalBucketUseTime)
+	}
 	tbp.Logf(ctx, "==========================")
 
 	tbp.verbose.Set(origVerbose)

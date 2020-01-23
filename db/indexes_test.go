@@ -209,8 +209,6 @@ func TestRemoveObsoleteIndexOnFail(t *testing.T) {
 	defer db.Close()
 
 	leakyBucket := base.NewLeakyBucket(testBucket.Bucket, base.LeakyBucketConfig{DropIndexErrorNames: []string{"sg_access_1", "sg_access_x1"}})
-	b, ok := leakyBucket.(*base.LeakyBucket)
-	assert.True(t, ok)
 
 	//Copy references to existing indexes to variable for future use
 	oldIndexes := sgIndexes
@@ -237,7 +235,7 @@ func TestRemoveObsoleteIndexOnFail(t *testing.T) {
 	channelIndex.previousVersions = []int{1}
 	sgIndexes[IndexChannels] = channelIndex
 
-	removedIndex, removeErr := removeObsoleteIndexes(b, false, db.UseXattrs(), db.UseViews())
+	removedIndex, removeErr := removeObsoleteIndexes(leakyBucket, false, db.UseXattrs(), db.UseViews())
 	assert.NoError(t, removeErr)
 
 	if base.TestUseXattrs() {
