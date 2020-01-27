@@ -1770,7 +1770,7 @@ func TestInitializeCacheUnderLoad(t *testing.T) {
 			body := Body{"serialnumber": int64(i), "channels": channels}
 			docID := fmt.Sprintf("loadCache-%d", i)
 			_, _, err := db.Put(docID, body)
-			assert.NoError(t, err, "Couldn't create document")
+			require.NoError(t, err, "Couldn't create document")
 			if i < inProgressCount {
 				writesInProgress.Done()
 			}
@@ -1780,7 +1780,7 @@ func TestInitializeCacheUnderLoad(t *testing.T) {
 	// Wait for writes to be in progress, then getChanges for channel zero
 	writesInProgress.Wait()
 	changes, err := db.GetChanges(channels.SetOf(t, "zero"), ChangesOptions{})
-	assert.NoError(t, err, "Couldn't GetChanges")
+	require.NoError(t, err, "Couldn't GetChanges")
 	firstChangesCount := len(changes)
 	var lastSeq SequenceID
 	if firstChangesCount > 0 {
@@ -1791,7 +1791,7 @@ func TestInitializeCacheUnderLoad(t *testing.T) {
 	cacheWaiter.Wait()
 
 	changes, err = db.GetChanges(channels.SetOf(t, "zero"), ChangesOptions{Since: lastSeq})
-	assert.NoError(t, err, "Couldn't GetChanges")
+	require.NoError(t, err, "Couldn't GetChanges")
 	secondChangesCount := len(changes)
 	assert.Equal(t, docCount, firstChangesCount+secondChangesCount)
 
