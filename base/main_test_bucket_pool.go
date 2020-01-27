@@ -513,13 +513,15 @@ loop:
 				start := time.Now()
 				b, err := tbp.openTestBucket(testBucketName, CreateSleeperFunc(5, 1000))
 				if err != nil {
-					panic(err)
+					tbp.Logf(ctx, "Couldn't open bucket to get ready, got error: %v", err)
+					return
 				}
 
 				tbp.Logf(ctx, "Running bucket through readier function")
 				err = bucketReadierFunc(ctx, b, tbp)
 				if err != nil {
-					panic(err)
+					tbp.Logf(ctx, "Couldn't ready bucket, got error: %v", err)
+					return
 				}
 
 				tbp.Logf(ctx, "Bucket ready, putting back into ready pool")
