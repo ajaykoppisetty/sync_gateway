@@ -55,6 +55,7 @@ type GocbTestBucketPool struct {
 	integrationMode    bool
 	readyBucketPool    chan *CouchbaseBucketGoCB
 	bucketReadierQueue chan bucketName
+	bucketReadierLock  sync.Mutex
 	cluster            *gocb.Cluster
 	clusterMgr         *gocb.ClusterManager
 	ctxCancelFunc      context.CancelFunc
@@ -324,7 +325,9 @@ func (tbp *GocbTestBucketPool) Close() {
 
 	// Cancel async workers
 	if tbp.ctxCancelFunc != nil {
+		tbp.bucketReadierLock.Lock()
 		tbp.ctxCancelFunc()
+		tbp.bucketReadierLock.Unlock()
 	}
 
 	if tbp.cluster != nil {
@@ -505,6 +508,7 @@ loop:
 			break loop
 
 		case testBucketName := <-tbp.bucketReadierQueue:
+			tbp.bucketReadierLock.Lock()
 			atomic.AddInt32(&tbp.stats.TotalBucketReadierCount, 1)
 			ctx := bucketNameCtx(ctx, string(testBucketName))
 			tbp.Logf(ctx, "bucketReadier got bucket")
@@ -527,6 +531,7 @@ loop:
 				tbp.Logf(ctx, "Bucket ready, putting back into ready pool")
 				tbp.readyBucketPool <- b
 				atomic.AddInt64(&tbp.stats.TotalBucketReadierDurationNano, time.Since(start).Nanoseconds())
+				tbp.bucketReadierLock.Unlock()
 
 			}(testBucketName)
 		}
