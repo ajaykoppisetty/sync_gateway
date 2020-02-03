@@ -132,10 +132,12 @@ func GetCouchbaseBucketGoCBFromCluster(cluster *gocb.Cluster, spec BucketSpec) (
 	user, pass, _ := spec.Auth.GetCredentials()
 	nodesMetadata, err := cluster.Manager(user, pass).Internal().GetNodesMetadata()
 	if err != nil {
+		_ = goCBBucket.Close()
 		return nil, err
 	}
 
 	if len(nodesMetadata) == 0 {
+		_ = goCBBucket.Close()
 		return nil, errors.New("Unable to get server cluster compatibility")
 	}
 
@@ -164,7 +166,6 @@ func GetCouchbaseBucketGoCBFromCluster(cluster *gocb.Cluster, spec BucketSpec) (
 	bucket.Bucket.SetN1qlTimeout(bucket.spec.GetViewQueryTimeout())
 
 	Infof(KeyAll, "Set query timeouts for bucket %s to cluster:%v, bucket:%v", spec.BucketName, cluster.N1qlTimeout(), bucket.N1qlTimeout())
-
 	return bucket, err
 }
 
