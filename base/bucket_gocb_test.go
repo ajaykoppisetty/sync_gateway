@@ -231,7 +231,7 @@ func TestBulkGetRaw(t *testing.T) {
 	}
 	emptyResults, err := bucket.GetBulkRaw(nonExistentKeySet)
 	assert.NoError(t, err, fmt.Sprintf("Unexpected error calling GetBulkRaw(): %v", err))
-	assert.Nil(t, emptyResults)
+	assert.NotNil(t, emptyResults)
 	assert.Len(t, emptyResults, 0)
 
 }
