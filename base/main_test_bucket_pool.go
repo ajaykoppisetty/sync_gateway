@@ -169,6 +169,11 @@ func NewTestBucketPool(bucketReadierFunc GocbBucketReadierFunc, bucketInitFunc B
 		return &tbp
 	}
 
+	_, err := SetMaxFileDescriptors(5000)
+	if err != nil {
+		panic(err)
+	}
+
 	numBuckets := numBuckets()
 	// TODO: What about pooling servers too??
 	// That way, we can have unlimited buckets available in a single test pool... True horizontal scalability in tests!
