@@ -153,7 +153,7 @@ func WaitForIndexEmpty(bucket *base.CouchbaseBucketGoCB, useXattrs bool) error {
 	err, _ := base.RetryLoop(
 		"Wait for index to be empty",
 		retryWorker,
-		base.CreateMaxDoublingSleeperFunc(30, 500, 4000),
+		base.CreateMaxDoublingSleeperFunc(60, 500, 5000),
 	)
 	return err
 
