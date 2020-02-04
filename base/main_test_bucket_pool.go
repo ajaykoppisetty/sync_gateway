@@ -526,10 +526,16 @@ loop:
 					return
 				}
 
-				tbp.Logf(ctx, "Running bucket through readier function")
-				err = bucketReadierFunc(ctx, b, tbp)
-				if err != nil {
-					tbp.Logf(ctx, "Couldn't ready bucket, got error: %v", err)
+				if err, _ := RetryLoop(b.GetName()+"bucketReadierRetry", func() (bool, error, interface{}) {
+					tbp.Logf(ctx, "Running bucket through readier function")
+					err = bucketReadierFunc(ctx, b, tbp)
+					if err != nil {
+						tbp.Logf(ctx, "Couldn't ready bucket, got error: %v - Retrying", err)
+						return true, err, nil
+					}
+					return false, nil, nil
+				}, CreateSleeperFunc(5, 1000)); err != nil {
+					tbp.Logf(ctx, "Couldn't ready bucket, got error: %v - Aborting readier for bucket", err)
 					return
 				}
 
