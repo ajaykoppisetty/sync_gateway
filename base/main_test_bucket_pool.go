@@ -485,8 +485,17 @@ func (tbp *GocbTestBucketPool) createTestBuckets(numBuckets int, bucketInitFunc 
 
 		tbp.Logf(ctx, "running bucketInitFunc")
 		b := openBuckets[i]
-		if err := bucketInitFunc(ctx, b, tbp); err != nil {
-			tbp.Logf(ctx, "Error from bucketInitFunc: %v", err)
+
+		if err, _ := RetryLoop(b.GetName()+"bucketInitRetry", func() (bool, error, interface{}) {
+			tbp.Logf(ctx, "Running bucket through init function")
+			err = bucketInitFunc(ctx, b, tbp)
+			if err != nil {
+				tbp.Logf(ctx, "Couldn't init bucket, got error: %v - Retrying", err)
+				return true, err, nil
+			}
+			return false, nil, nil
+		}, CreateSleeperFunc(5, 1000)); err != nil {
+			tbp.Logf(ctx, "Couldn't init bucket, got error: %v - Aborting", err)
 			os.Exit(1)
 		}
 
